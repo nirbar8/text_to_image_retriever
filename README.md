@@ -1,14 +1,13 @@
-# Retrieval + Heatmap System
+# Retrieval + Heatmap System (Aerial Tiles)
 
-This repository provides a production-ready, componentized retrieval pipeline with a Streamlit UI.
-It separates domain models, adapters, services, and workers to keep boundaries clear and integrations replaceable.
+This repository provides a componentized retrieval pipeline for aerial imagery tiles, with a Streamlit UI and clean service boundaries. It supports orthophoto tiling and simulated satellite imagery tiling.
 
 ## Architecture Overview
 
 ```
-COCO Images / Tiles
+Aerial Imagery
     │
-    │  (manifest.jsonl or tyler output)
+    │  (tiles.jsonl from Tyler)
     ▼
 Vector Manager (victor)
   - tile registry (TilesDB)
@@ -37,7 +36,7 @@ Streamlit App (HTTP-only clients)
 ### 1) Install dependencies
 
 ```bash
-uv sync --group model --group vectordb --group queue --group app
+uv sync --group model --group vectordb --group queue --group app --group tyler
 ```
 
 ### 2) Install PE-Core (Meta perception models)
@@ -48,16 +47,21 @@ git clone https://github.com/facebookresearch/perception_models.git third_party/
 uv pip install -e third_party/perception_models --no-deps
 ```
 
-### 3) Download COCO (optional, for demo)
+### 3) Prepare imagery
 
+- Orthophoto: place your GeoTIFF at `data/rasters/orthophoto.tif`
+- Simulated satellite: no data needed (synthetic tiles)
+
+### 4) Generate tiles
+
+Orthophoto tiles:
 ```bash
-./scripts/download_coco.sh
+uv run tyler --mode orthophoto
 ```
 
-### 4) Build a COCO manifest
-
+Simulated satellite tiles:
 ```bash
-uv run victor build-manifest
+uv run tyler --mode satellite
 ```
 
 ### 5) Start RabbitMQ
@@ -100,20 +104,39 @@ Each component loads its own `.env.*` file via Pydantic settings. Examples live 
 ### Required variables per component
 
 - Tyler: `TYLER_MODE`, `TYLER_OUTPUT_JSONL`
-- Vector Manager (victor): `VICTOR_MANIFEST_PATH`, `VICTOR_QUEUE_NAME`, `VICTOR_TILES_DB_PATH`
-- Embedder: `EMBEDDER_QUEUE_NAME`, `EMBEDDER_VECTORDB_URL`, `EMBEDDER_TABLE_NAME`
+- Vector Manager (victor): `VICTOR_TILES_MANIFEST_PATH`, `VICTOR_QUEUE_NAME`, `VICTOR_TILES_DB_PATH`
+- Embedder: `EMBEDDER_QUEUE_NAME`, `EMBEDDER_VECTORDB_URL`, `EMBEDDER_TILE_STORE`
 - VectorDB service: `VECTORDB_DB_DIR`
 - Retriever service: `RETRIEVER_VECTORDB_URL`
 - App: `APP_RETRIEVER_URL`, `APP_VECTORDB_URL`, `APP_TABLE_NAME`
 
+### Tile store options
+
+- `EMBEDDER_TILE_STORE=orthophoto` uses `EMBEDDER_RASTER_PATH` + tile bbox
+- `EMBEDDER_TILE_STORE=synthetic` uses deterministic synthetic tiles from `gid` + bbox
+- `EMBEDDER_TILE_STORE=local` loads `image_path` as a normal image file
+
+### Table naming
+
+If `EMBEDDER_TABLE_NAME` is empty, the worker uses `tiles_<model_name>` (e.g., `tiles_pe_core_b16_224`).
+
 ## Component Commands
 
 - Tyler: `uv run tyler`
-- Vector Manager: `uv run victor build-manifest` and `uv run victor publish`
+- Vector Manager: `uv run victor publish`
 - Embedder Worker: `uv run embedder-worker`
 - VectorDB Service: `uv run vectordb-service`
 - Retriever Service: `uv run retriever-service`
 - Streamlit App: `uv run app`
+
+## Database cleanup
+
+If you switch tile sources or embedding models, clean storage to avoid mixing schemas:
+
+- LanceDB: delete `data/lancedb` (or drop the table via VectorDB API)
+- Tiles DB: delete `data/tiles.db`
+- Tile manifest: delete `data/tiles.jsonl`
+- RabbitMQ queue: purge `tiles.to_index` from the management UI
 
 ## Tests
 

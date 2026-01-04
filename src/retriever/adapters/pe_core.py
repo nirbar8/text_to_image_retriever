@@ -1,13 +1,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List
 
 import torch
 from PIL import Image
 
-import core.vision_encoder.pe as pe
-import core.vision_encoder.transforms as transforms
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_PM_DIR = _REPO_ROOT / "third_party" / "perception_models"
+if _PM_DIR.exists() and str(_PM_DIR) not in __import__("sys").path:
+    __import__("sys").path.insert(0, str(_PM_DIR))
+
+try:
+    import core.vision_encoder.pe as pe
+    import core.vision_encoder.transforms as transforms
+except ModuleNotFoundError as exc:
+    raise ModuleNotFoundError(
+        "PE-Core not installed. Clone perception_models into third_party/ and install it, "
+        "or add it to PYTHONPATH. See README for setup steps."
+    ) from exc
 
 
 @dataclass

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, List, Optional, Protocol, Sequence
+from typing import TYPE_CHECKING, Iterable, List, Optional, Protocol, Sequence
 
 
 @dataclass(frozen=True)
@@ -10,9 +10,13 @@ class MessageEnvelope:
     ack: Callable[[], None]
 
 
+if TYPE_CHECKING:
+    from PIL import Image
+
+
 class TileStore(Protocol):
-    def get_tile_bytes(self, image_path: str) -> bytes:
-        """Return raw image bytes for a tile or image reference."""
+    def get_tile_image(self, request) -> "Image.Image":
+        """Return a PIL image for the requested tile."""
         ...
 
 

@@ -13,7 +13,11 @@ class EmbedderSettings(BaseSettings):
     queue_name: str = Field(default="tiles.to_index")
 
     vectordb_url: str = Field(default="http://localhost:8001")
-    table_name: str = Field(default="coco_pe_core_b16_224")
+    table_name: str = Field(default="")
+    model_name: str = Field(default="PE-Core-B16-224")
+
+    tile_store: str = Field(default="orthophoto")
+    raster_path: Path = Field(default=Path("data/rasters/orthophoto.tif"))
 
     batch_size: int = Field(default=64)
     max_inflight: int = Field(default=512)

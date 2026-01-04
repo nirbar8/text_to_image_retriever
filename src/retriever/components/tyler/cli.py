@@ -29,6 +29,11 @@ def run() -> None:
             SatelliteTylerConfig(
                 bounds=(s.bounds_minx, s.bounds_miny, s.bounds_maxx, s.bounds_maxy),
                 tile_size_deg=s.tile_size_deg,
+                tile_size_px=s.tile_size_px,
+                image_count=s.sat_image_count,
+                image_size_deg=s.sat_image_size_deg,
+                rotation_deg_max=s.sat_rotation_deg_max,
+                seed=s.sat_seed,
             )
         )
 
@@ -36,7 +41,25 @@ def run() -> None:
     s.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
     with s.output_jsonl.open("w", encoding="utf-8") as f:
         for t in tiles:
-            f.write(json.dumps(t.__dict__, ensure_ascii=False))
+            record = {
+                "image_id": t.image_id,
+                "image_path": "",
+                "width": t.width,
+                "height": t.height,
+                "tile_id": t.tile_id,
+                "gid": getattr(t, "gid", None),
+                "raster_path": getattr(t, "raster_path", None),
+                "bbox": {
+                    "minx": t.minx,
+                    "miny": t.miny,
+                    "maxx": t.maxx,
+                    "maxy": t.maxy,
+                    "crs": t.crs,
+                },
+                "out_width": t.width,
+                "out_height": t.height,
+            }
+            f.write(json.dumps(record, ensure_ascii=False))
             f.write("\n")
 
     print(f"Wrote {len(tiles)} tiles to {s.output_jsonl}")

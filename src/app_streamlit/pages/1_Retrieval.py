@@ -20,7 +20,7 @@ def score_generic(distance: Optional[float]) -> Optional[float]:
 
 def simple_semidup_filter(
     hits: List[Dict[str, Any]],
-    key_fields: Tuple[str, ...] = ("image_id", "coco_file_name"),
+    key_fields: Tuple[str, ...] = ("image_id", "tile_id"),
 ) -> List[Dict[str, Any]]:
     seen: Set[Tuple[Any, ...]] = set()
     kept: List[Dict[str, Any]] = []
@@ -90,8 +90,12 @@ if run:
     missing = 0
 
     for h in hits:
+        image_path = h.get("image_path")
+        if not image_path:
+            missing += 1
+            continue
         try:
-            images.append(load_image(h["image_path"]))
+            images.append(load_image(image_path))
             valid_hits.append(h)
         except Exception:
             missing += 1

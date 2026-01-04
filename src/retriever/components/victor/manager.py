@@ -36,11 +36,18 @@ class VectorManager:
 
             tiles.append(
                 {
-                    "tile_id": req.tile_id or f"coco:{req.image_id}",
+                    "tile_id": req.tile_id or f"tile:{req.image_id}",
                     "image_path": req.image_path,
                     "width": req.width,
                     "height": req.height,
                     "status": "queued",
+                    "gid": req.gid,
+                    "raster_path": req.raster_path,
+                    "bbox_minx": req.bbox.minx if req.bbox else None,
+                    "bbox_miny": req.bbox.miny if req.bbox else None,
+                    "bbox_maxx": req.bbox.maxx if req.bbox else None,
+                    "bbox_maxy": req.bbox.maxy if req.bbox else None,
+                    "bbox_crs": req.bbox.crs if req.bbox else None,
                     "lat": req.lat,
                     "lon": req.lon,
                     "utm_zone": req.utm_zone,
@@ -72,7 +79,7 @@ def run() -> None:
     bus = RabbitMQMessageBus(RmqConfig(s.rmq_host, s.rmq_port, s.rmq_user, s.rmq_pass))
     repo = SqliteTilesRepository(SqliteTilesConfig(s.tiles_db_path))
     manager = VectorManager(bus=bus, tiles_repo=repo)
-    published = manager.ingest_manifest(s.manifest_path, queue_name=s.queue_name)
+    published = manager.ingest_manifest(s.tiles_manifest_path, queue_name=s.queue_name)
     print(f"Published {published} index requests to {s.queue_name}")
 
 

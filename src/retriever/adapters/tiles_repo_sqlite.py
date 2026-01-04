@@ -30,6 +30,13 @@ class SqliteTilesRepository(TilesRepository):
                 width INTEGER,
                 height INTEGER,
                 status TEXT,
+                gid INTEGER,
+                raster_path TEXT,
+                bbox_minx REAL,
+                bbox_miny REAL,
+                bbox_maxx REAL,
+                bbox_maxy REAL,
+                bbox_crs TEXT,
                 lat REAL,
                 lon REAL,
                 utm_zone TEXT
@@ -42,13 +49,24 @@ class SqliteTilesRepository(TilesRepository):
         cur = self._conn.cursor()
         cur.executemany(
             """
-            INSERT INTO tiles (tile_id, image_path, width, height, status, lat, lon, utm_zone)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tiles (
+                tile_id, image_path, width, height, status, gid, raster_path,
+                bbox_minx, bbox_miny, bbox_maxx, bbox_maxy, bbox_crs,
+                lat, lon, utm_zone
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tile_id) DO UPDATE SET
                 image_path=excluded.image_path,
                 width=excluded.width,
                 height=excluded.height,
                 status=excluded.status,
+                gid=excluded.gid,
+                raster_path=excluded.raster_path,
+                bbox_minx=excluded.bbox_minx,
+                bbox_miny=excluded.bbox_miny,
+                bbox_maxx=excluded.bbox_maxx,
+                bbox_maxy=excluded.bbox_maxy,
+                bbox_crs=excluded.bbox_crs,
                 lat=excluded.lat,
                 lon=excluded.lon,
                 utm_zone=excluded.utm_zone
@@ -60,6 +78,13 @@ class SqliteTilesRepository(TilesRepository):
                     t.get("width"),
                     t.get("height"),
                     t.get("status"),
+                    t.get("gid"),
+                    t.get("raster_path"),
+                    t.get("bbox_minx"),
+                    t.get("bbox_miny"),
+                    t.get("bbox_maxx"),
+                    t.get("bbox_maxy"),
+                    t.get("bbox_crs"),
                     t.get("lat"),
                     t.get("lon"),
                     t.get("utm_zone"),
@@ -73,12 +98,22 @@ class SqliteTilesRepository(TilesRepository):
         cur = self._conn.cursor()
         if status:
             cur.execute(
-                "SELECT tile_id, image_path, width, height, status, lat, lon, utm_zone FROM tiles WHERE status = ? LIMIT ?",
+                """
+                SELECT tile_id, image_path, width, height, status, gid, raster_path,
+                       bbox_minx, bbox_miny, bbox_maxx, bbox_maxy, bbox_crs,
+                       lat, lon, utm_zone
+                FROM tiles WHERE status = ? LIMIT ?
+                """,
                 (status, limit),
             )
         else:
             cur.execute(
-                "SELECT tile_id, image_path, width, height, status, lat, lon, utm_zone FROM tiles LIMIT ?",
+                """
+                SELECT tile_id, image_path, width, height, status, gid, raster_path,
+                       bbox_minx, bbox_miny, bbox_maxx, bbox_maxy, bbox_crs,
+                       lat, lon, utm_zone
+                FROM tiles LIMIT ?
+                """,
                 (limit,),
             )
         rows = cur.fetchall()
@@ -89,9 +124,16 @@ class SqliteTilesRepository(TilesRepository):
                 "width": r[2],
                 "height": r[3],
                 "status": r[4],
-                "lat": r[5],
-                "lon": r[6],
-                "utm_zone": r[7],
+                "gid": r[5],
+                "raster_path": r[6],
+                "bbox_minx": r[7],
+                "bbox_miny": r[8],
+                "bbox_maxx": r[9],
+                "bbox_maxy": r[10],
+                "bbox_crs": r[11],
+                "lat": r[12],
+                "lon": r[13],
+                "utm_zone": r[14],
             }
             for r in rows
         ]

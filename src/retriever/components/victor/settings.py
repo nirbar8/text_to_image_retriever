@@ -6,11 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class VictorSettings(BaseSettings):
-    manifest_path: Path = Field(default=Path("data/manifest_100k.jsonl"))
-    coco_root: Path = Field(default=Path("data/coco"))
-    coco_images_dir: Path = Field(default=Path("data/coco/train2017"))
-    coco_instances_json: Path = Field(default=Path("data/coco/annotations/instances_train2017.json"))
-    max_items: int = Field(default=100_000)
+    tiles_manifest_path: Path = Field(default=Path("data/tiles.jsonl"))
 
     rmq_host: str = Field(default="localhost")
     rmq_port: int = Field(default=5672)

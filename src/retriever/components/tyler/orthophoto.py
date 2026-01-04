@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import List
 
 import rasterio
 from rasterio.windows import Window
@@ -13,7 +13,9 @@ from retriever.core.tile_id import TileKey, canonical_tile_id
 
 @dataclass(frozen=True)
 class TileSpec:
+    image_id: int
     tile_id: str
+    raster_path: str
     minx: float
     miny: float
     maxx: float
@@ -38,6 +40,7 @@ class OrthophotoTyler:
 
     def generate_tiles(self) -> List[TileSpec]:
         tiles: List[TileSpec] = []
+        image_id = 0
         with rasterio.open(self._cfg.raster_path) as src:
             if src.crs is None:
                 raise ValueError("Raster has no CRS")
@@ -55,13 +58,14 @@ class OrthophotoTyler:
                     else:
                         minx, miny, maxx, maxy = bounds
 
-                    z = 0
-                    key = TileKey(source=self._cfg.source_name, z=z, x=col, y=row)
+                    key = TileKey(source=self._cfg.source_name, z=0, x=col, y=row)
                     tile_id = canonical_tile_id(key)
 
                     tiles.append(
                         TileSpec(
+                            image_id=image_id,
                             tile_id=tile_id,
+                            raster_path=str(self._cfg.raster_path),
                             minx=float(minx),
                             miny=float(miny),
                             maxx=float(maxx),
@@ -71,4 +75,5 @@ class OrthophotoTyler:
                             height=int(window.height),
                         )
                     )
+                    image_id += 1
         return tiles

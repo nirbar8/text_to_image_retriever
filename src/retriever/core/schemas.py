@@ -5,13 +5,26 @@ from typing import Any, Dict, List, Optional, Sequence
 from pydantic import BaseModel, Field
 
 
+class TileBBox(BaseModel):
+    minx: float
+    miny: float
+    maxx: float
+    maxy: float
+    crs: str = "EPSG:4326"
+
+
 class IndexRequest(BaseModel):
     image_id: int
-    image_path: str
+    image_path: Optional[str] = None
     width: int
     height: int
-    coco_file_name: Optional[str] = None
     tile_id: Optional[str] = None
+    gid: Optional[int] = None
+    raster_path: Optional[str] = None
+    bbox: Optional[TileBBox] = None
+    bands: Optional[Sequence[int]] = None
+    out_width: Optional[int] = None
+    out_height: Optional[int] = None
     lat: Optional[float] = None
     lon: Optional[float] = None
     utm_zone: Optional[str] = None

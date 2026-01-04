@@ -3,16 +3,14 @@ from __future__ import annotations
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from io import BytesIO
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-from PIL import Image
 import torch
 from tqdm import tqdm
 
 from retriever.adapters.message_bus_rmq import RabbitMQMessageBus, RmqConfig
 from retriever.adapters.pe_core import PECoreEmbedder
-from retriever.adapters.tile_store_local import LocalFileTileStore
+from retriever.adapters.tile_store import LocalFileTileStore, OrthophotoTileStore, SyntheticSatelliteTileStore
 from retriever.clients.vectordb import VectorDBClient
 from retriever.components.embedder_worker.settings import EmbedderSettings
 from retriever.core.interfaces import MessageBus, TileStore
@@ -33,22 +31,38 @@ def _build_or_predicate_int(field: str, values: Sequence[int]) -> Optional[str]:
     return " OR ".join([f"({field} = {v})" for v in vals])
 
 
-def _load_and_preprocess(image_bytes: bytes, preprocess_fn) -> torch.Tensor:
-    with Image.open(BytesIO(image_bytes)) as im:
-        im = im.convert("RGB")
-        t = preprocess_fn(im)
-        return t.contiguous()
+def _load_and_preprocess(tile_store: TileStore, req: IndexRequest, preprocess_fn) -> torch.Tensor:
+    im = tile_store.get_tile_image(req).convert("RGB")
+    t = preprocess_fn(im)
+    return t.contiguous()
+
+
+def _resolve_table_name(settings: EmbedderSettings) -> str:
+    if settings.table_name.strip():
+        return settings.table_name
+    return f"tiles_{settings.model_name.lower().replace('-', '_')}"
+
+
+def _make_tile_store(settings: EmbedderSettings) -> TileStore:
+    store = settings.tile_store.lower()
+    if store == "local":
+        return LocalFileTileStore()
+    if store == "synthetic":
+        return SyntheticSatelliteTileStore()
+    return OrthophotoTileStore(default_raster_path=str(settings.raster_path))
 
 
 def run() -> None:
     s = EmbedderSettings()
     bus: MessageBus = RabbitMQMessageBus(RmqConfig(s.rmq_host, s.rmq_port, s.rmq_user, s.rmq_pass))
-    tile_store: TileStore = LocalFileTileStore()
+    tile_store = _make_tile_store(s)
     vectordb = VectorDBClient(s.vectordb_url)
 
-    model = PECoreEmbedder("PE-Core-B16-224")
+    model = PECoreEmbedder(s.model_name)
     device = model.device
     assert device is not None
+
+    table_name = _resolve_table_name(s)
 
     executor = ThreadPoolExecutor(max_workers=s.decode_workers)
 
@@ -66,7 +80,7 @@ def run() -> None:
             return
         if not force and len(write_buffer) < s.flush_rows:
             return
-        vectordb.upsert(s.table_name, write_buffer)
+        vectordb.upsert(table_name, write_buffer)
         write_buffer = []
 
     def _ack_all(methods: Iterable[Any]) -> None:
@@ -80,7 +94,7 @@ def run() -> None:
         pred = _build_or_predicate_int("image_id", image_ids)
         if not pred:
             return set()
-        rows = vectordb.sample_rows(s.table_name, where=pred, limit=len(image_ids), columns=["image_id"])
+        rows = vectordb.sample_rows(table_name, where=pred, limit=len(image_ids), columns=["image_id"])
         return {int(r["image_id"]) for r in rows}
 
     def embed_and_stage(jobs: List[_Job]) -> None:
@@ -104,12 +118,18 @@ def run() -> None:
             row = {
                 "id": str(req.image_id),
                 "embedding": emb.tolist(),
-                "image_path": req.image_path,
+                "image_path": req.image_path or "",
                 "image_id": int(req.image_id),
                 "width": int(req.width),
                 "height": int(req.height),
-                "coco_file_name": req.coco_file_name or "",
                 "tile_id": req.tile_id,
+                "gid": req.gid,
+                "raster_path": req.raster_path,
+                "bbox_minx": req.bbox.minx if req.bbox else None,
+                "bbox_miny": req.bbox.miny if req.bbox else None,
+                "bbox_maxx": req.bbox.maxx if req.bbox else None,
+                "bbox_maxy": req.bbox.maxy if req.bbox else None,
+                "bbox_crs": req.bbox.crs if req.bbox else None,
                 "lat": req.lat,
                 "lon": req.lon,
                 "utm_zone": req.utm_zone,
@@ -194,8 +214,7 @@ def run() -> None:
             if len(job_futures) >= s.max_inflight:
                 drain_futures(s.batch_size)
 
-            image_bytes = tile_store.get_tile_bytes(req.image_path)
-            fut = executor.submit(_load_and_preprocess, image_bytes, model.preprocess)
+            fut = executor.submit(_load_and_preprocess, tile_store, req, model.preprocess)
             job_futures.append((fut, req, envelope.ack))
 
             now = time.time()
