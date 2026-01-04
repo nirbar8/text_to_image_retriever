@@ -14,6 +14,7 @@ dependencies = [
     "tqdm>=4.67.1",
     "transformers>=4.57.3",
     "uvicorn>=0.30.0",
+    "watchdogs>=2.0.0",
 ]
 
 [project.scripts]
