@@ -1,0 +1,95 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+build/
+dist/
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# =========================
+# Virtual environments
+# =========================
+.venv/
+.uv/
+.env
+.env.*
+
+# =========================
+# Data / datasets
+# =========================
+data/
+*.jsonl
+*.parquet
+*.arrow
+
+# =========================
+# LanceDB
+# =========================
+lancedb/
+*.lance
+*.ldb
+
+# =========================
+# HuggingFace / Torch caches
+# =========================
+.cache/
+.huggingface/
+.hf/
+torch_cache/
+.checkpoints/
+
+# =========================
+# COCO / large assets
+# =========================
+*.zip
+*.tar
+*.tar.gz
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# Docker
+# =========================
+docker-compose.override.yml
+
+# =========================
+# macOS
+# =========================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Trashes
+.Spotlight-V100
+
+# =========================
+# Editors / IDEs
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+
+# =========================
+# Temporary / scratch
+# =========================
+tmp/
+scratch/
