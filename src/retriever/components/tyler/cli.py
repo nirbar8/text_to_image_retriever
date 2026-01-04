@@ -30,6 +30,11 @@ def run() -> None:
     tyler = TylerFactory(s).build()
 
     tiles = tyler.generate_tiles()
+    tile_store = {
+        TylerMode.ORTHOPHOTO: "orthophoto",
+        TylerMode.SATELLITE: "synthetic",
+        TylerMode.COCO: "local",
+    }.get(s.mode, "orthophoto")
     s.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
     with s.output_jsonl.open("w", encoding="utf-8") as f:
         for t in tiles:
@@ -47,6 +52,7 @@ def run() -> None:
                 "lat": getattr(t, "lat", None),
                 "lon": getattr(t, "lon", None),
                 "utm_zone": getattr(t, "utm_zone", None),
+                "tile_store": tile_store,
             }
             f.write(json.dumps(record, ensure_ascii=False))
             f.write("\n")

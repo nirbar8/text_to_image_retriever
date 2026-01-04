@@ -5,6 +5,8 @@ from typing import Any, Dict, List
 import streamlit as st
 from PIL import Image
 
+from retriever.core.schemas import VECTOR_METADATA_COLUMNS
+
 
 def render_hit_card(idx: int, image: Image.Image, hit: Dict[str, Any]) -> None:
     st.image(image, width="stretch")
@@ -15,21 +17,7 @@ def render_hit_card(idx: int, image: Image.Image, hit: Dict[str, Any]) -> None:
     st.markdown(f"**#{idx}**")
     st.markdown(f"score_01: `{score01}`  \n_distance: `{dist}`")
 
-    meta = {
-        k: hit.get(k)
-        for k in [
-            "image_id",
-            "width",
-            "height",
-            "run_id",
-            "tile_id",
-            "gid",
-            "raster_path",
-            "lat",
-            "lon",
-            "utm_zone",
-        ]
-    }
+    meta = {k: hit.get(k) for k in VECTOR_METADATA_COLUMNS}
     st.json(meta, expanded=False)
 
 

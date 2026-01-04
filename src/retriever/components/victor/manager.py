@@ -12,7 +12,7 @@ from retriever.adapters.message_bus_rmq_config import RmqConfig
 from retriever.adapters.tiles_repo_sqlite import SqliteTilesConfig, SqliteTilesRepository
 from retriever.components.victor.settings import VictorSettings
 from retriever.core.interfaces import MessageBus, TilesRepository
-from retriever.core.schemas import IndexRequest
+from retriever.core.schemas import IndexRequest, bbox_to_columns, geo_to_columns
 
 
 @dataclass
@@ -44,14 +44,9 @@ class VectorManager:
                     "status": "waiting for embedding",
                     "gid": req.gid,
                     "raster_path": req.raster_path,
-                    "bbox_minx": req.bbox.minx if req.bbox else None,
-                    "bbox_miny": req.bbox.miny if req.bbox else None,
-                    "bbox_maxx": req.bbox.maxx if req.bbox else None,
-                    "bbox_maxy": req.bbox.maxy if req.bbox else None,
-                    "bbox_crs": req.bbox.crs if req.bbox else None,
-                    "lat": req.lat,
-                    "lon": req.lon,
-                    "utm_zone": req.utm_zone,
+                    "tile_store": req.tile_store,
+                    **bbox_to_columns(req.bbox),
+                    **geo_to_columns(req),
                 }
             )
 

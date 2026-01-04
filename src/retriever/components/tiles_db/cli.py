@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Iterable, List
 
 from retriever.adapters.tiles_repo_sqlite import SqliteTilesConfig, SqliteTilesRepository
+from retriever.core.schemas import TILE_DB_COLUMNS
 
 
 def _parse_args() -> argparse.Namespace:
@@ -60,13 +61,13 @@ def _print_tile(tile: dict) -> None:
 
 
 def _print_tiles(rows: Iterable[dict]) -> None:
-    header = ["tile_id", "status", "image_path", "width", "height", "gid", "raster_path"]
+    header = list(TILE_DB_COLUMNS)
     print("\t".join(header))
     for row in rows:
         print(
             "\t".join(
                 str(row.get(field, ""))
-                for field in ["tile_id", "status", "image_path", "width", "height", "gid", "raster_path"]
+                for field in TILE_DB_COLUMNS
             )
         )
 
