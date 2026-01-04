@@ -1,9 +1,3 @@
-Here is a **clean, professional README.md** you can drop in the repo root.
-It’s written for **hackathon speed + future scalability**, no fluff, no marketing noise.
-
-You can copy–paste as-is.
-
----
 
 # PE-Core + LanceDB + RabbitMQ Retrieval POC
 
@@ -288,3 +282,7 @@ If you want, next I can:
 * collapse this into a **single CLI (`poc index / query`)**
 * add **local-only indexing without RabbitMQ**
 * add **benchmark scripts (latency, throughput)**
+<<<<<<< HEAD
+=======
+
+>>>>>>> 82cee0e (Initial commit)
