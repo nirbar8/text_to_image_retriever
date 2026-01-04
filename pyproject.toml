@@ -14,14 +14,14 @@ dependencies = [
 ]
 
 [project.scripts]
-tiler = "retriever.components.tiler.cli:run"
+tyler = "retriever.components.tyler.cli:run"
 victor = "retriever.components.victor.cli:main"
 embedder-worker = "retriever.components.embedder_worker.cli:main"
 vectordb-service = "retriever.services.vectordb.cli:main"
 retriever-service = "retriever.services.retriever.cli:main"
 app = "app_streamlit.cli:main"
 
-[project.optional-dependencies]
+[dependency-groups]
 model = [
     "einops>=0.8.1",
     "ftfy>=6.3.1",
@@ -44,7 +44,7 @@ app = [
     "streamlit>=1.52.2",
     "pillow>=12.1.0",
 ]
-tiler = [
+tyler = [
     "geopandas>=1.1.2",
     "planetary-computer>=1.0.0",
     "pyproj>=3.7.2",

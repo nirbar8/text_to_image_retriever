@@ -5,7 +5,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class TilerSettings(BaseSettings):
+class TylerSettings(BaseSettings):
     mode: str = Field(default="orthophoto")
     raster_path: Path = Field(default=Path("data/rasters/orthophoto.tif"))
     bounds_minx: float = Field(default=34.7)
@@ -18,8 +18,8 @@ class TilerSettings(BaseSettings):
     output_jsonl: Path = Field(default=Path("data/tiles.jsonl"))
 
     model_config = SettingsConfigDict(
-        env_prefix="TILER_",
-        env_file=".env.tiler",
+        env_prefix="TYLER_",
+        env_file=".env.tyler",
         env_file_encoding="utf-8",
         case_sensitive=False,
     )

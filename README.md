@@ -8,7 +8,7 @@ It separates domain models, adapters, services, and workers to keep boundaries c
 ```
 COCO Images / Tiles
     │
-    │  (manifest.jsonl or tiler output)
+    │  (manifest.jsonl or tyler output)
     ▼
 Vector Manager (victor)
   - tile registry (TilesDB)
@@ -90,7 +90,7 @@ uv run app
 
 Each component loads its own `.env.*` file via Pydantic settings. Examples live in `config/examples/`.
 
-- `config/examples/.env.tiler`
+- `config/examples/.env.tyler`
 - `config/examples/.env.victor`
 - `config/examples/.env.embedder`
 - `config/examples/.env.vectordb`
@@ -99,7 +99,7 @@ Each component loads its own `.env.*` file via Pydantic settings. Examples live 
 
 ### Required variables per component
 
-- Tiler: `TILER_MODE`, `TILER_OUTPUT_JSONL`
+- Tyler: `TYLER_MODE`, `TYLER_OUTPUT_JSONL`
 - Vector Manager (victor): `VICTOR_MANIFEST_PATH`, `VICTOR_QUEUE_NAME`, `VICTOR_TILES_DB_PATH`
 - Embedder: `EMBEDDER_QUEUE_NAME`, `EMBEDDER_VECTORDB_URL`, `EMBEDDER_TABLE_NAME`
 - VectorDB service: `VECTORDB_DB_DIR`
@@ -108,7 +108,7 @@ Each component loads its own `.env.*` file via Pydantic settings. Examples live 
 
 ## Component Commands
 
-- Tiler: `uv run tiler`
+- Tyler: `uv run tyler`
 - Vector Manager: `uv run victor build-manifest` and `uv run victor publish`
 - Embedder Worker: `uv run embedder-worker`
 - VectorDB Service: `uv run vectordb-service`
@@ -129,7 +129,7 @@ src/
     core/
     adapters/
     components/
-      tiler/
+      tyler/
       victor/
       embedder_worker/
     services/

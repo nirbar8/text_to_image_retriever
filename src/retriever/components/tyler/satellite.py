@@ -19,15 +19,15 @@ class TileSpec:
 
 
 @dataclass(frozen=True)
-class SatelliteTilerConfig:
+class SatelliteTylerConfig:
     bounds: Tuple[float, float, float, float]
     tile_size_deg: float = 0.01
     output_crs: str = "EPSG:4326"
     source_name: str = "satellite"
 
 
-class SatelliteBoundsTiler:
-    def __init__(self, cfg: SatelliteTilerConfig):
+class SatelliteBoundsTyler:
+    def __init__(self, cfg: SatelliteTylerConfig):
         self._cfg = cfg
 
     def generate_tiles(self) -> List[TileSpec]:

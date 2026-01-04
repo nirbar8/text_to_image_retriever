@@ -24,7 +24,7 @@ class TileSpec:
 
 
 @dataclass(frozen=True)
-class OrthophotoTilerConfig:
+class OrthophotoTylerConfig:
     raster_path: Path
     tile_size_px: int = 512
     stride_px: int = 512
@@ -32,8 +32,8 @@ class OrthophotoTilerConfig:
     source_name: str = "orthophoto"
 
 
-class OrthophotoTiler:
-    def __init__(self, cfg: OrthophotoTilerConfig):
+class OrthophotoTyler:
+    def __init__(self, cfg: OrthophotoTylerConfig):
         self._cfg = cfg
 
     def generate_tiles(self) -> List[TileSpec]:
