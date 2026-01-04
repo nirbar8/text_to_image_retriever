@@ -3,10 +3,20 @@ from __future__ import annotations
 import argparse
 import json
 
-from retriever.components.tyler.coco import CocoTyler, CocoTylerConfig
-from retriever.components.tyler.orthophoto import OrthophotoTyler, OrthophotoTylerConfig
-from retriever.components.tyler.satellite import SatelliteBoundsTyler, SatelliteTylerConfig
-from retriever.components.tyler.settings import TylerSettings
+from retriever.components.tyler.factory import TylerFactory
+from retriever.components.tyler.settings import TylerMode, TylerSettings
+
+
+def _build_bbox(tile: object) -> dict[str, float | str] | None:
+    if all(hasattr(tile, attr) for attr in ("minx", "miny", "maxx", "maxy", "crs")):
+        return {
+            "minx": tile.minx,
+            "miny": tile.miny,
+            "maxx": tile.maxx,
+            "maxy": tile.maxy,
+            "crs": tile.crs,
+        }
+    return None
 
 
 def run() -> None:
@@ -15,39 +25,9 @@ def run() -> None:
     args = parser.parse_args()
 
     s = TylerSettings()
-    mode = args.mode or s.mode
-
-    if mode == "orthophoto":
-        tyler = OrthophotoTyler(
-            OrthophotoTylerConfig(
-                raster_path=s.raster_path,
-                tile_size_px=s.tile_size_px,
-                stride_px=s.stride_px,
-            )
-        )
-    elif mode == "satellite":
-        tyler = SatelliteBoundsTyler(
-            SatelliteTylerConfig(
-                bounds=(s.bounds_minx, s.bounds_miny, s.bounds_maxx, s.bounds_maxy),
-                tile_size_deg=s.tile_size_deg,
-                tile_size_px=s.tile_size_px,
-                image_count=s.sat_image_count,
-                image_size_deg=s.sat_image_size_deg,
-                rotation_deg_max=s.sat_rotation_deg_max,
-                seed=s.sat_seed,
-            )
-        )
-    else:
-        tyler = CocoTyler(
-            CocoTylerConfig(
-                instances_json=s.coco_instances_json,
-                images_dir=s.coco_images_dir,
-                max_items=s.coco_max_items,
-                seed=s.coco_seed,
-                lat_range=(s.coco_lat_min, s.coco_lat_max),
-                lon_range=(s.coco_lon_min, s.coco_lon_max),
-            )
-        )
+    if args.mode:
+        s.mode = TylerMode(args.mode)
+    tyler = TylerFactory(s).build()
 
     tiles = tyler.generate_tiles()
     s.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
@@ -61,13 +41,7 @@ def run() -> None:
                 "tile_id": t.tile_id,
                 "gid": getattr(t, "gid", None),
                 "raster_path": getattr(t, "raster_path", None),
-                "bbox": {
-                    "minx": getattr(t, "minx", None),
-                    "miny": getattr(t, "miny", None),
-                    "maxx": getattr(t, "maxx", None),
-                    "maxy": getattr(t, "maxy", None),
-                    "crs": getattr(t, "crs", None),
-                },
+                "bbox": _build_bbox(t),
                 "out_width": t.width,
                 "out_height": t.height,
                 "lat": getattr(t, "lat", None),
