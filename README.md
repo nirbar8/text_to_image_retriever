@@ -40,6 +40,41 @@ Streamlit App (HTTP-only clients)
   - Cached tiles are written into `image_path` in the VectorDB rows.
 - The Streamlit UI prefers `image_path` but can fall back to raster-backed tiles when the path is empty.
 
+### TilesDB status flow
+
+TilesDB is a local SQLite registry for tiles. It is used by:
+
+- **Victor**: inserts tiles from `tiles.jsonl` with status `waiting for embedding`.
+- **Embedder Worker**: updates status transitions during embedding and indexing.
+
+Status transitions:
+
+1. `waiting for embedding` → set by Victor (publish).
+2. `waiting for embedding` → (reasserted) by the embedder when a batch starts.
+3. `waiting for index` → set after embeddings are ready but before the VectorDB upsert.
+4. `indexed` → set after a successful VectorDB upsert.
+5. `failed` → set when a tile cannot be loaded or decoded.
+
+If the VectorDB service is down, the embedder does **not** ack the batch and messages are requeued; statuses remain at `waiting for index`. If TilesDB itself is unavailable during the `indexed` update, you can opt into holding acks so messages are retried by setting:
+
+```
+EMBEDDER_REQUIRE_INDEX_STATUS_BEFORE_ACK=true
+```
+
+This keeps the status updates and message acknowledgements aligned when the local SQLite file is unreachable.
+
+### TilesDB debugging and maintenance
+
+Use the `tiles-db` CLI to inspect and maintain the SQLite registry:
+
+```bash
+uv run tiles-db summary
+uv run tiles-db list --status "waiting for index" --limit 25
+uv run tiles-db show tile:123
+uv run tiles-db set-status indexed tile:123 tile:124
+uv run tiles-db delete tile:125
+```
+
 ## Quickstart (Local)
 
 ### 1) Install dependencies
