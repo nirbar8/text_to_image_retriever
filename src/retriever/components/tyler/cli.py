@@ -3,39 +3,31 @@ from __future__ import annotations
 import argparse
 import json
 
-from retriever.components.tyler.orthophoto import OrthophotoTyler, OrthophotoTylerConfig
-from retriever.components.tyler.satellite import SatelliteBoundsTyler, SatelliteTylerConfig
-from retriever.components.tyler.settings import TylerSettings
+from retriever.components.tyler.factory import TylerFactory
+from retriever.components.tyler.settings import TylerMode, TylerSettings
+
+
+def _build_bbox(tile: object) -> dict[str, float | str] | None:
+    if all(hasattr(tile, attr) for attr in ("minx", "miny", "maxx", "maxy", "crs")):
+        return {
+            "minx": tile.minx,
+            "miny": tile.miny,
+            "maxx": tile.maxx,
+            "maxy": tile.maxy,
+            "crs": tile.crs,
+        }
+    return None
 
 
 def run() -> None:
     parser = argparse.ArgumentParser(description="Generate tiles from orthophoto or satellite bounds.")
-    parser.add_argument("--mode", choices=["orthophoto", "satellite"], default=None)
+    parser.add_argument("--mode", choices=["orthophoto", "satellite", "coco"], default=None)
     args = parser.parse_args()
 
     s = TylerSettings()
-    mode = args.mode or s.mode
-
-    if mode == "orthophoto":
-        tyler = OrthophotoTyler(
-            OrthophotoTylerConfig(
-                raster_path=s.raster_path,
-                tile_size_px=s.tile_size_px,
-                stride_px=s.stride_px,
-            )
-        )
-    else:
-        tyler = SatelliteBoundsTyler(
-            SatelliteTylerConfig(
-                bounds=(s.bounds_minx, s.bounds_miny, s.bounds_maxx, s.bounds_maxy),
-                tile_size_deg=s.tile_size_deg,
-                tile_size_px=s.tile_size_px,
-                image_count=s.sat_image_count,
-                image_size_deg=s.sat_image_size_deg,
-                rotation_deg_max=s.sat_rotation_deg_max,
-                seed=s.sat_seed,
-            )
-        )
+    if args.mode:
+        s.mode = TylerMode(args.mode)
+    tyler = TylerFactory(s).build()
 
     tiles = tyler.generate_tiles()
     s.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
@@ -43,21 +35,18 @@ def run() -> None:
         for t in tiles:
             record = {
                 "image_id": t.image_id,
-                "image_path": "",
+                "image_path": getattr(t, "image_path", ""),
                 "width": t.width,
                 "height": t.height,
                 "tile_id": t.tile_id,
                 "gid": getattr(t, "gid", None),
                 "raster_path": getattr(t, "raster_path", None),
-                "bbox": {
-                    "minx": t.minx,
-                    "miny": t.miny,
-                    "maxx": t.maxx,
-                    "maxy": t.maxy,
-                    "crs": t.crs,
-                },
+                "bbox": _build_bbox(t),
                 "out_width": t.width,
                 "out_height": t.height,
+                "lat": getattr(t, "lat", None),
+                "lon": getattr(t, "lon", None),
+                "utm_zone": getattr(t, "utm_zone", None),
             }
             f.write(json.dumps(record, ensure_ascii=False))
             f.write("\n")
