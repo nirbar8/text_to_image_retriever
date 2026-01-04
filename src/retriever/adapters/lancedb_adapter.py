@@ -135,8 +135,9 @@ class LanceDBAdapter:
 
     def add_rows(self, table_name: str, rows: List[Dict[str, Any]], embedding_dim: int) -> int:
         table = self.get_or_create_table(table_name, embedding_dim=embedding_dim)
-        table.add(rows)
-        return len(rows)
+        filtered = self._filter_rows_to_schema(table.schema, rows)
+        table.add(filtered)
+        return len(filtered)
 
     def upsert_rows(
         self,
@@ -146,6 +147,7 @@ class LanceDBAdapter:
         id_col: str = "image_id",
     ) -> int:
         table = self.get_or_create_table(table_name, embedding_dim=embedding_dim)
+        filtered = self._filter_rows_to_schema(table.schema, rows)
         ids = [row.get(id_col) for row in rows if row.get(id_col) is not None]
         if ids:
             parts: List[str] = []
@@ -160,8 +162,13 @@ class LanceDBAdapter:
                         parts.append(str(val))
             where = f"{id_col} in ({', '.join(parts)})"
             table.delete(where)
-        table.add(rows)
-        return len(rows)
+        table.add(filtered)
+        return len(filtered)
+
+    @staticmethod
+    def _filter_rows_to_schema(schema: pa.Schema, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        allowed = set(schema.names)
+        return [{k: v for k, v in row.items() if k in allowed} for row in rows]
 
     def sample_rows(
         self,
