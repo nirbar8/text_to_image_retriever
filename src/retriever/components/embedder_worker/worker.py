@@ -2,37 +2,26 @@ from __future__ import annotations
 
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from tqdm import tqdm
 
 import httpx
 
 from retriever.adapters.tiles_repo_sqlite import SqliteTilesConfig, SqliteTilesRepository
-from retriever.adapters.message_bus_rmq import RabbitMQMessageBus, RmqConfig
+from retriever.adapters.message_bus_rmq import RmqMessageBusFactory
+from retriever.adapters.message_bus_rmq_config import RmqConfig
 from retriever.adapters.embedder_factory import build_embedder
-from retriever.adapters.tile_store import LocalFileTileStore, OrthophotoTileStore, SyntheticSatelliteTileStore
+from retriever.adapters.tile_store import (
+    LocalFileTileStore,
+    OrthophotoTileStore,
+    SyntheticSatelliteTileStore,
+)
 from retriever.clients.vectordb import VectorDBClient
 from retriever.components.embedder_worker.settings import EmbedderSettings
 from retriever.core.interfaces import MessageBus, TileStore, TilesRepository
 from retriever.core.schemas import IndexRequest
-
-
-@dataclass
-class _Job:
-    req: IndexRequest
-    image: Any
-    resolved_image_path: Optional[str]
-    ack: Any
-
-
-def _build_or_predicate_int(field: str, values: Sequence[int]) -> Optional[str]:
-    vals = [int(v) for v in values]
-    if not vals:
-        return None
-    return " OR ".join([f"({field} = {v})" for v in vals])
 
 
 def _tile_id_for_req(req: IndexRequest) -> str:
@@ -45,6 +34,7 @@ def _safe_update_status(repo: Optional[TilesRepository], tile_ids: Sequence[str]
     try:
         repo.update_status(tile_ids, status=status)
     except Exception:
+        # status updates should never crash the worker
         pass
 
 
@@ -64,6 +54,11 @@ def _load_tile(
     cache_dir: Optional[Path],
     cache_format: str,
 ) -> Tuple[Any, Optional[str]]:
+    """
+    Load tile as PIL image (RGB) and optionally cache to disk.
+
+    Returns: (image, resolved_image_path_or_None)
+    """
     im = tile_store.get_tile_image(req).convert("RGB")
     resolved = req.image_path
 
@@ -98,15 +93,39 @@ def _make_tile_store(settings: EmbedderSettings) -> TileStore:
         return SyntheticSatelliteTileStore()
     raster_path = settings.raster_path
     if not raster_path.exists():
-        raise FileNotFoundError(f"Raster not found: {raster_path}. Set EMBEDDER_RASTER_PATH or use EMBEDDER_TILE_STORE=synthetic.")
+        raise FileNotFoundError(
+            f"Raster not found: {raster_path}. "
+            f"Set EMBEDDER_RASTER_PATH or use EMBEDDER_TILE_STORE=synthetic."
+        )
     return OrthophotoTileStore(default_raster_path=str(raster_path))
+
+
+def _safe_ack(envelope: Any) -> None:
+    try:
+        envelope.ack()
+    except Exception:
+        # ack failures are non-fatal; message will be redelivered
+        pass
 
 
 def run() -> None:
     s = EmbedderSettings()
-    bus: MessageBus = RabbitMQMessageBus(RmqConfig(s.rmq_host, s.rmq_port, s.rmq_user, s.rmq_pass))
+
+    bus_cfg = RmqConfig(
+        s.rmq_host,
+        s.rmq_port,
+        s.rmq_user,
+        s.rmq_pass,
+        prefetch_count=s.rmq_prefetch_count,
+        heartbeat_s=s.rmq_heartbeat_s,
+        blocked_connection_timeout_s=s.rmq_blocked_connection_timeout_s,
+        ack_debug=s.rmq_ack_debug,
+    )
+    bus: MessageBus = RmqMessageBusFactory().create(bus_cfg, style=s.rmq_consume_style)
+
     tile_store = _make_tile_store(s)
     vectordb = VectorDBClient(s.vectordb_url, timeout_s=s.vectordb_timeout_s)
+
     tiles_repo: Optional[TilesRepository] = None
     if s.update_tile_statuses:
         tiles_repo = SqliteTilesRepository(SqliteTilesConfig(s.tiles_db_path))
@@ -124,90 +143,83 @@ def run() -> None:
 
     table_name = _resolve_table_name(s)
 
+    # Pool for tile loading (I/O bound)
     executor = ThreadPoolExecutor(max_workers=s.decode_workers)
-
-    job_futures: List[Tuple[Any, IndexRequest, Any, float]] = []
-    write_buffer: List[Dict[str, Any]] = []
-    write_acks: List[Any] = []
-    write_tile_ids: List[str] = []
-    seen_in_run: Set[int] = set()
-    next_upsert_retry_ts = 0.0
-    retry_backoff_s = float(s.vectordb_retry_s)
-    last_upsert_error_log = 0.0
 
     pbar = tqdm(total=0, desc="indexed", unit="img")
     indexed_total = 0
+    received_total = 0
 
-    def flush_writes(force: bool = False) -> bool:
-        nonlocal write_buffer
-        nonlocal write_acks
-        nonlocal write_tile_ids
-        nonlocal next_upsert_retry_ts
-        nonlocal retry_backoff_s
-        nonlocal last_upsert_error_log
+    print(
+        f"Embedder worker started on device={device}, queue={s.queue_name}, "
+        f"tile_store={s.tile_store}, backend={s.embedder_backend}, "
+        f"table={table_name}. Ctrl+C to stop."
+    )
 
-        if not write_buffer:
-            return True
-        now = time.time()
-        if not force and len(write_buffer) < s.flush_rows:
-            return True
-        if now < next_upsert_retry_ts:
-            return False
-        try:
-            vectordb.upsert(table_name, write_buffer)
-        except Exception as exc:
-            next_upsert_retry_ts = now + retry_backoff_s
-            retry_backoff_s = min(retry_backoff_s * 2.0, float(s.vectordb_retry_max_s))
-            if now - last_upsert_error_log >= s.idle_log_every_s:
-                print(f"[warn] vectordb upsert failed; retrying in {int(retry_backoff_s)}s: {exc}")
-                last_upsert_error_log = now
-            return False
+    # batch holds tuples of (IndexRequest, envelope)
+    batch: List[Tuple[IndexRequest, Any]] = []
+    last_batch_ts = 0.0
 
-        _ack_all(write_acks)
-        _safe_update_status(tiles_repo, write_tile_ids, status="indexed")
-        write_buffer = []
-        write_acks = []
-        write_tile_ids = []
-        next_upsert_retry_ts = 0.0
-        retry_backoff_s = float(s.vectordb_retry_s)
-        return True
+    def process_batch() -> None:
+        nonlocal batch, indexed_total
 
-    def _ack_all(methods: Iterable[Any]) -> None:
-        for m in methods:
+        if not batch:
+            return
+
+        tile_ids = [_tile_id_for_req(req) for req, _envelope in batch]
+        _safe_update_status(tiles_repo, tile_ids, status="waiting for embedding")
+
+        # Submit tile loads in parallel for this batch
+        futures: List[Tuple[IndexRequest, Any, Any]] = []
+        for req, envelope in batch:
+            fut = executor.submit(
+                _load_tile,
+                tile_store,
+                req,
+                s.tile_cache_dir if s.cache_tiles else None,
+                s.tile_cache_format,
+            )
+            futures.append((req, envelope, fut))
+
+        items: List[Tuple[IndexRequest, Any, Any, Optional[str]]] = []
+
+        for req, envelope, fut in futures:
+            tile_id = _tile_id_for_req(req)
             try:
-                m()
-            except Exception:
-                pass
+                img, resolved_path = fut.result(timeout=s.job_timeout_s)
+            except Exception as e:
+                # Loading failed or timed out: mark failed and ack, we won't retry this one
+                print(f"[warn] failed to load tile for image_id={req.image_id}: {e}")
+                _safe_update_status(tiles_repo, [tile_id], status="failed")
+                _safe_ack(envelope)
+                continue
 
-    def _safe_ack(method) -> None:
+            items.append((req, envelope, img, resolved_path))
+
+        # Clear the batch (we will rebuild based on which items succeeded)
+        batch = []
+
+        if not items:
+            return
+
+        # Embed all images in one go
+        images = [img for (_req, _env, img, _path) in items]
         try:
-            method()
-        except Exception:
-            pass
+            embeddings = model.embed_pil_images(images).numpy()
+        except Exception as e:
+            # Embedding failed: don't ack anything, messages will be redelivered later
+            print(f"[warn] embedding batch of {len(images)} images failed: {e}")
+            return
 
-    def _existing_image_ids(image_ids: Sequence[int]) -> Set[int]:
-        pred = _build_or_predicate_int("image_id", image_ids)
-        if not pred:
-            return set()
-        try:
-            rows = vectordb.sample_rows(table_name, where=pred, limit=len(image_ids), columns=["image_id"])
-        except httpx.HTTPError:
-            return set()
-        return {int(r["image_id"]) for r in rows}
+        rows: List[Dict[str, Any]] = []
+        envelopes_to_ack: List[Any] = []
+        tile_ids_to_index: List[str] = []
 
-    def embed_and_stage(jobs: List[_Job]) -> None:
-        nonlocal indexed_total
-
-        images = [j.image for j in jobs]
-        image_features = model.embed_pil_images(images).numpy()
-
-        staged_tile_ids: List[str] = []
-        for j, emb in zip(jobs, image_features):
-            req = j.req
+        for (req, envelope, _img, resolved_path), emb in zip(items, embeddings):
             row = {
                 "id": str(req.image_id),
                 "embedding": emb.tolist(),
-                "image_path": j.resolved_image_path or "",
+                "image_path": resolved_path or "",
                 "image_id": int(req.image_id),
                 "width": int(req.width),
                 "height": int(req.height),
@@ -224,174 +236,82 @@ def run() -> None:
                 "utm_zone": req.utm_zone,
                 "run_id": req.run_id,
             }
-            write_buffer.append(row)
-            write_acks.append(j.ack)
-            tile_id = _tile_id_for_req(req)
-            write_tile_ids.append(tile_id)
-            staged_tile_ids.append(tile_id)
+            rows.append(row)
+            envelopes_to_ack.append(envelope)
+            tile_ids_to_index.append(_tile_id_for_req(req))
 
-        indexed_total += len(jobs)
-        pbar.update(len(jobs))
-        _safe_update_status(tiles_repo, staged_tile_ids, status="embedded")
-        _ = flush_writes(force=False)
+        # Mark as waiting for index
+        _safe_update_status(tiles_repo, tile_ids_to_index, status="waiting for index")
 
-    def drain_futures(batch_size: int) -> None:
-        nonlocal job_futures
-        nonlocal last_pending_log
-
-        ready: List[Tuple[IndexRequest, Any, Any, Optional[str]]] = []
-        pending: List[Tuple[Any, IndexRequest, Any, float]] = []
-
-        now = time.time()
-        for fut, req, ack, start_ts in job_futures:
-            if fut.done():
-                try:
-                    img, resolved_path = fut.result()
-                    ready.append((req, ack, img, resolved_path))
-                except Exception:
-                    _safe_ack(ack)
-                    _safe_update_status(tiles_repo, [_tile_id_for_req(req)], status="failed")
-            else:
-                if now - start_ts > s.job_timeout_s:
-                    try:
-                        fut.cancel()
-                    except Exception:
-                        pass
-                    _safe_ack(ack)
-                    _safe_update_status(tiles_repo, [_tile_id_for_req(req)], status="failed")
-                else:
-                    pending.append((fut, req, ack, start_ts))
-
-        job_futures = pending
-        if not ready:
-            if job_futures and now - last_pending_log >= s.pending_log_every_s:
-                print(f"[pending] futures={len(job_futures)}")
-                last_pending_log = now
+        # Single upsert for the whole batch
+        try:
+            vectordb.upsert(table_name, rows)
+        except httpx.HTTPError as e:
+            print(f"[warn] vectordb HTTP error on upsert of {len(rows)} rows: {e}")
+            # Leave messages unacked -> redelivery later
+            return
+        except Exception as e:
+            print(f"[warn] vectordb upsert failed for {len(rows)} rows: {e}")
+            # Leave messages unacked -> redelivery later
             return
 
-        uniq: List[Tuple[IndexRequest, Any, Any, Optional[str]]] = []
-        skipped: List[Any] = []
-        skipped_tile_ids: List[str] = []
-        for req, ack, img, resolved_path in ready:
-            image_id = int(req.image_id)
-            if image_id in seen_in_run:
-                skipped.append(ack)
-                skipped_tile_ids.append(_tile_id_for_req(req))
-                continue
-            seen_in_run.add(image_id)
-            uniq.append((req, ack, img, resolved_path))
-        if skipped:
-            _ack_all(skipped)
-            _safe_update_status(tiles_repo, skipped_tile_ids, status="indexed")
+        # Upsert succeeded: mark indexed and ack
+        _safe_update_status(tiles_repo, tile_ids_to_index, status="indexed")
+        for envelope in envelopes_to_ack:
+            _safe_ack(envelope)
 
-        if not uniq:
-            return
-
-        uniq_ids = [int(req.image_id) for (req, _, _, _) in uniq]
-        exists = _existing_image_ids(uniq_ids)
-        if exists:
-            kept: List[Tuple[IndexRequest, Any, Any, Optional[str]]] = []
-            to_ack: List[Any] = []
-            to_mark: List[str] = []
-            for req, ack, img, resolved_path in uniq:
-                if int(req.image_id) in exists:
-                    to_ack.append(ack)
-                    to_mark.append(_tile_id_for_req(req))
-                else:
-                    kept.append((req, ack, img, resolved_path))
-            if to_ack:
-                _ack_all(to_ack)
-                _safe_update_status(tiles_repo, to_mark, status="indexed")
-            uniq = kept
-
-        if not uniq:
-            return
-
-        for i in range(0, len(uniq), batch_size):
-            chunk = uniq[i : i + batch_size]
-            jobs = [
-                _Job(req=req, ack=ack, image=img, resolved_image_path=resolved_path)
-                for (req, ack, img, resolved_path) in chunk
-            ]
-            embed_and_stage(jobs)
-
-    last_flush = time.time()
-    last_message = time.time()
-    last_pending_log = 0.0
-    last_idle_log = 0.0
-    received = 0
+        indexed_total += len(rows)
+        pbar.update(len(rows))
 
     try:
-        print(
-            f"Embedder worker started on device={device}, queue={s.queue_name}, "
-            f"tile_store={s.tile_store}, backend={s.embedder_backend}, table={table_name}. Ctrl+C to stop."
-        )
         while True:
             try:
                 for envelope in bus.consume(s.queue_name):
-                    if envelope.payload.get("_idle"):
+                    if envelope is None:
                         now = time.time()
-                        if job_futures:
-                            drain_futures(s.batch_size)
-                        if now - last_flush > s.idle_flush_s:
-                            flush_writes(force=True)
-                            last_flush = now
-                        if now - last_message > s.idle_log_every_s and now - last_idle_log >= s.idle_log_every_s:
-                            print(
-                                f"[idle] no messages for {int(now - last_message)}s; "
-                                f"queue={s.queue_name} tile_store={s.tile_store}"
-                            )
-                            last_idle_log = now
+                        if batch and (now - last_batch_ts) >= s.flush_interval_s:
+                            process_batch()
+                            last_batch_ts = time.time()
                         continue
+                    payload = envelope.payload
+                    req = IndexRequest(**payload)
+                    received_total += 1
 
-                    req = IndexRequest(**envelope.payload)
-                    image_id = int(req.image_id)
-                    last_message = time.time()
-                    received += 1
-                    if received == 1 or received % s.recv_log_every == 0:
-                        print(f"[recv] received={received} image_id={image_id}")
+                    if received_total == 1 or received_total % s.recv_log_every == 0:
+                        print(f"[recv] received={received_total} image_id={int(req.image_id)}")
 
-                    if image_id in seen_in_run:
-                        envelope.ack()
-                        _safe_update_status(tiles_repo, [_tile_id_for_req(req)], status="indexed")
-                        continue
-                    _safe_update_status(tiles_repo, [_tile_id_for_req(req)], status="processing")
-
-                    if len(job_futures) >= s.max_inflight:
-                        drain_futures(s.batch_size)
-
-                    fut = executor.submit(
-                        _load_tile,
-                        tile_store,
-                        req,
-                        s.tile_cache_dir if s.cache_tiles else None,
-                        s.tile_cache_format,
-                    )
-                    job_futures.append((fut, req, envelope.ack, time.time()))
+                    # Add to batch
+                    batch.append((req, envelope))
+                    if len(batch) == 1:
+                        last_batch_ts = time.time()
 
                     now = time.time()
-                    if now - last_flush > s.flush_interval_s:
-                        flush_writes(force=True)
-                        last_flush = now
-                    drain_futures(s.batch_size)
+                    # Flush by size OR by time
+                    if len(batch) >= s.batch_size or (now - last_batch_ts) >= s.flush_interval_s:
+                        process_batch()
+                        last_batch_ts = time.time()
+
+                now = time.time()
+                if batch and (now - last_batch_ts) >= s.flush_interval_s:
+                    process_batch()
+                    last_batch_ts = time.time()
+
             except Exception as exc:
                 print(f"[warn] message bus consume failed; retrying in {s.rmq_retry_s}s: {exc}")
+                # Drop local batch. All unacked messages will be requeued by RabbitMQ.
+                batch = []
                 time.sleep(s.rmq_retry_s)
                 continue
     except KeyboardInterrupt:
-        print("Stopping. Draining remaining jobs...")
-        while job_futures:
-            drain_futures(s.batch_size)
-            time.sleep(0.05)
-        flush_writes(force=True)
-    finally:
+        print("Stopping. Processing last batch before exit...")
         try:
-            flush_writes(force=True)
+            process_batch()
         except Exception as e:
-            print(f"[warn] final flush failed: {e}")
+            print(f"[warn] final batch processing failed: {e}")
+    finally:
         executor.shutdown(wait=True)
         pbar.close()
-        print(f"Done. Total newly indexed this run: {indexed_total}")
+        print(f"Done. Total indexed this run: {indexed_total}")
 
 
 if __name__ == "__main__":

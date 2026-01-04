@@ -12,6 +12,11 @@ class EmbedderSettings(BaseSettings):
     rmq_pass: str = Field(default="guest")
     queue_name: str = Field(default="tiles.to_index")
     rmq_retry_s: float = Field(default=5.0)
+    rmq_prefetch_count: int = Field(default=256)
+    rmq_heartbeat_s: int = Field(default=0)
+    rmq_blocked_connection_timeout_s: float = Field(default=0.0)
+    rmq_ack_debug: bool = Field(default=False)
+    rmq_consume_style: str = Field(default="callback")
 
     vectordb_url: str = Field(default="http://localhost:8001")
     vectordb_timeout_s: float = Field(default=30.0)

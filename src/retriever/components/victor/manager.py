@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, List
 
-from retriever.adapters.message_bus_rmq import RabbitMQMessageBus, RmqConfig
+from retriever.adapters.message_bus_rmq import RmqMessageBusFactory
+from retriever.adapters.message_bus_rmq_config import RmqConfig
 from retriever.adapters.tiles_repo_sqlite import SqliteTilesConfig, SqliteTilesRepository
 from retriever.components.victor.settings import VictorSettings
 from retriever.core.interfaces import MessageBus, TilesRepository
@@ -40,7 +41,7 @@ class VectorManager:
                     "image_path": req.image_path,
                     "width": req.width,
                     "height": req.height,
-                    "status": "queued",
+                    "status": "waiting for embedding",
                     "gid": req.gid,
                     "raster_path": req.raster_path,
                     "bbox_minx": req.bbox.minx if req.bbox else None,
@@ -76,7 +77,7 @@ class VectorManager:
 
 def run() -> None:
     s = VictorSettings()
-    bus = RabbitMQMessageBus(RmqConfig(s.rmq_host, s.rmq_port, s.rmq_user, s.rmq_pass))
+    bus = RmqMessageBusFactory().create(RmqConfig(s.rmq_host, s.rmq_port, s.rmq_user, s.rmq_pass))
     repo = SqliteTilesRepository(SqliteTilesConfig(s.tiles_db_path))
     manager = VectorManager(bus=bus, tiles_repo=repo)
     published = manager.ingest_manifest(s.tiles_manifest_path, queue_name=s.queue_name)

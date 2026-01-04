@@ -143,6 +143,31 @@ class LanceDBAdapter:
         table.add(rows)
         return len(rows)
 
+    def upsert_rows(
+        self,
+        table_name: str,
+        rows: List[Dict[str, Any]],
+        embedding_dim: int,
+        id_col: str = "image_id",
+    ) -> int:
+        table = self.get_or_create_table(table_name, embedding_dim=embedding_dim)
+        ids = [row.get(id_col) for row in rows if row.get(id_col) is not None]
+        if ids:
+            parts: List[str] = []
+            for val in ids:
+                if isinstance(val, str):
+                    safe = val.replace("'", "''")
+                    parts.append(f"'{safe}'")
+                else:
+                    try:
+                        parts.append(str(int(val)))
+                    except Exception:
+                        parts.append(str(val))
+            where = f"{id_col} in ({', '.join(parts)})"
+            table.delete(where)
+        table.add(rows)
+        return len(rows)
+
     def sample_rows(
         self,
         table_name: str,

@@ -38,7 +38,7 @@ class MessageBus(Protocol):
     def publish(self, queue: str, message: dict) -> None:
         ...
 
-    def consume(self, queue: str) -> Iterable[MessageEnvelope]:
+    def consume(self, queue: str) -> Iterable[Optional[MessageEnvelope]]:
         ...
 
 

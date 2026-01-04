@@ -86,7 +86,7 @@ def create_app(settings: VectorDBSettings) -> FastAPI:
         if not embedding:
             raise HTTPException(status_code=400, detail="Missing embedding in rows")
         embedding_dim = len(embedding)
-        inserted = adapter.add_rows(table_name, req.rows, embedding_dim=embedding_dim)
+        inserted = adapter.upsert_rows(table_name, req.rows, embedding_dim=embedding_dim, id_col="image_id")
         return VectorUpsertResponse(inserted=inserted)
 
     @app.post("/tables/{table_name}/delete", response_model=DeleteRowsResponse)

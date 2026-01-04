@@ -75,7 +75,15 @@ class OrthophotoTileStore(TileStore):
         img = np.transpose(data, (1, 2, 0))
         if img.dtype != np.uint8:
             img = np.clip(img, 0, 255).astype(np.uint8)
-        return Image.fromarray(img, mode="RGB")
+        if img.ndim == 3:
+            if img.shape[2] == 1:
+                img = img[:, :, 0]
+            elif img.shape[2] == 2:
+                pad = img[:, :, :1]
+                img = np.concatenate([img, pad], axis=2)
+            elif img.shape[2] > 3:
+                img = img[:, :, :3]
+        return Image.fromarray(img).convert("RGB")
 
 
 @dataclass(frozen=True)
@@ -99,4 +107,12 @@ class SyntheticSatelliteTileStore(TileStore):
         noise = rng.random((height, width, self.channels), dtype=np.float32) * 0.2
         img = np.clip(base + noise, 0.0, 1.0)
         img = (img * 255.0 + 0.5).astype(np.uint8)
-        return Image.fromarray(img, mode="RGB")
+        if img.ndim == 3:
+            if img.shape[2] == 1:
+                img = img[:, :, 0]
+            elif img.shape[2] == 2:
+                pad = img[:, :, :1]
+                img = np.concatenate([img, pad], axis=2)
+            elif img.shape[2] > 3:
+                img = img[:, :, :3]
+        return Image.fromarray(img).convert("RGB")
