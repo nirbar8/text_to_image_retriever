@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Iterable, List, Optional, Protocol, Sequence
+from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Protocol, Sequence
 
 
 @dataclass(frozen=True)

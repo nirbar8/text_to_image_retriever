@@ -16,7 +16,8 @@ Vector Manager (victor)
     ▼
 Embedder Worker
   - fetches tiles via TileStore
-  - batches PE-Core embeddings
+  - batches image embeddings
+  - optionally caches tiles to disk
   - upserts into VectorDB service
     │
     ▼
@@ -24,12 +25,20 @@ VectorDB Service (FastAPI + LanceDB)
     │
     ▼
 Retriever Service (FastAPI)
-  - PE-Core text embedding
+  - text embedding backend
   - post-processing hooks (GeoNMS scaffold)
     │
     ▼
 Streamlit App (HTTP-only clients)
 ```
+
+## Tile Handling + Storage
+
+- Tyler writes `data/tiles.jsonl` with `bbox` + `raster_path` (orthophoto) or `gid` (synthetic); `image_path` is optional.
+- Victor publishes tile requests to RabbitMQ and stores the tile registry in `data/tiles.db`.
+- The Embedder Worker renders tiles through a `TileStore` and can **cache tiles to disk** (default `data/tiles_cache`).
+  - Cached tiles are written into `image_path` in the VectorDB rows.
+- The Streamlit UI prefers `image_path` but can fall back to raster-backed tiles when the path is empty.
 
 ## Quickstart (Local)
 
@@ -121,9 +130,69 @@ Each component loads its own `.env.*` file via Pydantic settings. Examples live 
 - `EMBEDDER_TILE_STORE=synthetic` uses deterministic synthetic tiles from `gid` + bbox
 - `EMBEDDER_TILE_STORE=local` loads `image_path` as a normal image file
 
+### Tile cache (optional)
+
+- `EMBEDDER_CACHE_TILES=true` writes tiles to disk (default: `data/tiles_cache`)
+- `EMBEDDER_TILE_CACHE_DIR` and `EMBEDDER_TILE_CACHE_FORMAT` control cache location/format
+
 ### Table naming
 
 If `EMBEDDER_TABLE_NAME` is empty, the worker uses `tiles_<model_name>` (e.g., `tiles_pe_core_b16_224`).
+
+## Embedder Backends
+
+Both the Embedder Worker and Retriever Service use the same backend family.
+
+### PE-Core (default)
+
+- `EMBEDDER_EMBEDDER_BACKEND=pe_core`
+- `RETRIEVER_EMBEDDER_BACKEND=pe_core`
+- `*_MODEL_NAME=PE-Core-B16-224`
+
+Install:
+```bash
+git clone https://github.com/facebookresearch/perception_models.git third_party/perception_models
+uv pip install -e third_party/perception_models --no-deps
+```
+
+### CLIP (OpenCLIP)
+
+- `EMBEDDER_EMBEDDER_BACKEND=clip`
+- `RETRIEVER_EMBEDDER_BACKEND=clip`
+- `*_MODEL_NAME=ViT-B-32`
+- `*_CLIP_PRETRAINED=openai`
+
+Install:
+```bash
+uv pip install open_clip_torch
+```
+
+### SigLip2
+
+- `EMBEDDER_EMBEDDER_BACKEND=siglip2`
+- `RETRIEVER_EMBEDDER_BACKEND=siglip2`
+- `*_MODEL_NAME=google/siglip2-base-patch16-224`
+
+Install:
+```bash
+uv pip install transformers
+```
+
+### RemoteClip (HTTP)
+
+- `EMBEDDER_EMBEDDER_BACKEND=remoteclip`
+- `RETRIEVER_EMBEDDER_BACKEND=remoteclip`
+- `*_REMOTE_CLIP_URL=http://localhost:9000`
+
+Expected API contract:
+
+```
+POST /embed/images  {"images": ["<base64-png>", ...]}
+-> {"embeddings": [[...], ...]}
+
+POST /embed/texts   {"texts": ["a dog", ...]}
+-> {"embeddings": [[...], ...]}
+```
 
 ## Component Commands
 

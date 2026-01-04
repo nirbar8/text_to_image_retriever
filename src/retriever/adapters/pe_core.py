@@ -26,6 +26,8 @@ except ModuleNotFoundError as exc:
 class PECoreEmbedder:
     config_name: str = "PE-Core-B16-224"
     device: torch.device | None = None
+    name: str = "pe_core"
+    embed_dim: int = 0
 
     def __post_init__(self) -> None:
         if self.device is None:

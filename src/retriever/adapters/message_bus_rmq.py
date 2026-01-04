@@ -44,6 +44,7 @@ class RabbitMQMessageBus(MessageBus):
         channel = connection.channel()
         channel.queue_declare(queue=queue, durable=True)
         channel.basic_qos(prefetch_count=256)
+        session = _ConsumeSession()
 
         try:
             for method, properties, body in channel.consume(queue, inactivity_timeout=1.0):
@@ -53,10 +54,18 @@ class RabbitMQMessageBus(MessageBus):
                 payload = json.loads(body.decode("utf-8"))
 
                 def _ack() -> None:
-                    channel.basic_ack(delivery_tag=method.delivery_tag)
+                    if not session.active:
+                        return
+                    if not channel.is_open or not connection.is_open:
+                        return
+                    try:
+                        channel.basic_ack(delivery_tag=method.delivery_tag)
+                    except Exception:
+                        return
 
                 yield MessageEnvelope(payload=payload, ack=_ack)
         finally:
+            session.active = False
             try:
                 channel.cancel()
             except Exception:
@@ -65,3 +74,8 @@ class RabbitMQMessageBus(MessageBus):
                 connection.close()
             except Exception:
                 pass
+
+
+@dataclass
+class _ConsumeSession:
+    active: bool = True

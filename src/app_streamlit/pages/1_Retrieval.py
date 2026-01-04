@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from app_streamlit.ui.components import render_grid
-from app_streamlit.utils.images import load_image
+from app_streamlit.utils.images import load_hit_image
 from app_streamlit.utils.state import get_context
 
 
@@ -90,12 +90,8 @@ if run:
     missing = 0
 
     for h in hits:
-        image_path = h.get("image_path")
-        if not image_path:
-            missing += 1
-            continue
         try:
-            images.append(load_image(image_path))
+            images.append(load_hit_image(h))
             valid_hits.append(h)
         except Exception:
             missing += 1

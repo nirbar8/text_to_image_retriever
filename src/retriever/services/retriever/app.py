@@ -4,7 +4,7 @@ from typing import Dict, List
 
 from fastapi import FastAPI
 
-from retriever.adapters.pe_core import PECoreEmbedder
+from retriever.adapters.embedder_factory import build_embedder
 from retriever.clients.vectordb import VectorDBClient
 from retriever.core.schemas import HealthResponse, RetrieverSearchRequest, RetrieverSearchResponse
 from retriever.services.retriever.settings import RetrieverSettings
@@ -17,7 +17,14 @@ def _geo_nms_stub(rows: List[dict], radius_m: float | None) -> List[dict]:
 
 def create_app(settings: RetrieverSettings) -> FastAPI:
     app = FastAPI(title="Retriever Service", version="1.0")
-    model = PECoreEmbedder(settings.model_name)
+    model = build_embedder(
+        settings.embedder_backend,
+        settings.model_name,
+        clip_pretrained=settings.clip_pretrained,
+        remote_clip_url=settings.remote_clip_url,
+        remote_clip_timeout_s=settings.remote_clip_timeout_s,
+        remote_clip_image_format=settings.remote_clip_image_format,
+    )
     vectordb = VectorDBClient(settings.vectordb_url)
 
     @app.get("/health", response_model=HealthResponse)
