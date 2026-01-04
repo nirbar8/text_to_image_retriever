@@ -84,7 +84,8 @@ def _load_tile(
 def _resolve_table_name(settings: EmbedderSettings, model_name: str) -> str:
     if settings.table_name.strip():
         return settings.table_name
-    return f"tiles_{model_name.lower().replace('-', '_')}"
+    safe_model = _sanitize_token(model_name.lower().replace("-", "_"))
+    return f"tiles_{safe_model}"
 
 
 def _normalize_tile_store(value: str) -> str:
