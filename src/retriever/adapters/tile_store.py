@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from io import BytesIO
 from typing import Optional
 
 import numpy as np
@@ -15,7 +16,14 @@ class LocalFileTileStore(TileStore):
     def get_tile_image(self, request: IndexRequest) -> Image.Image:
         if not request.image_path:
             raise ValueError("image_path is required for LocalFileTileStore")
-        return Image.open(request.image_path).convert("RGB")
+        image_path = request.image_path
+        if image_path.startswith(("http://", "https://")):
+            import httpx
+
+            resp = httpx.get(image_path, timeout=30.0)
+            resp.raise_for_status()
+            return Image.open(BytesIO(resp.content)).convert("RGB")
+        return Image.open(image_path).convert("RGB")
 
 
 @dataclass(frozen=True)

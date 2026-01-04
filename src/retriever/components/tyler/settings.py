@@ -19,6 +19,14 @@ class TylerSettings(BaseSettings):
     sat_image_size_deg: float = Field(default=0.05)
     sat_rotation_deg_max: float = Field(default=45.0)
     sat_seed: int = Field(default=1337)
+    coco_images_dir: Path = Field(default=Path("data/coco/train2017"))
+    coco_instances_json: Path = Field(default=Path("data/coco/annotations/instances_train2017.json"))
+    coco_max_items: int = Field(default=500)
+    coco_seed: int = Field(default=1337)
+    coco_lat_min: float = Field(default=-60.0)
+    coco_lat_max: float = Field(default=60.0)
+    coco_lon_min: float = Field(default=-180.0)
+    coco_lon_max: float = Field(default=180.0)
     output_jsonl: Path = Field(default=Path("data/tiles.jsonl"))
 
     model_config = SettingsConfigDict(

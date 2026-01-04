@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 
+from retriever.components.tyler.coco import CocoTyler, CocoTylerConfig
 from retriever.components.tyler.orthophoto import OrthophotoTyler, OrthophotoTylerConfig
 from retriever.components.tyler.satellite import SatelliteBoundsTyler, SatelliteTylerConfig
 from retriever.components.tyler.settings import TylerSettings
@@ -10,7 +11,7 @@ from retriever.components.tyler.settings import TylerSettings
 
 def run() -> None:
     parser = argparse.ArgumentParser(description="Generate tiles from orthophoto or satellite bounds.")
-    parser.add_argument("--mode", choices=["orthophoto", "satellite"], default=None)
+    parser.add_argument("--mode", choices=["orthophoto", "satellite", "coco"], default=None)
     args = parser.parse_args()
 
     s = TylerSettings()
@@ -24,7 +25,7 @@ def run() -> None:
                 stride_px=s.stride_px,
             )
         )
-    else:
+    elif mode == "satellite":
         tyler = SatelliteBoundsTyler(
             SatelliteTylerConfig(
                 bounds=(s.bounds_minx, s.bounds_miny, s.bounds_maxx, s.bounds_maxy),
@@ -36,6 +37,17 @@ def run() -> None:
                 seed=s.sat_seed,
             )
         )
+    else:
+        tyler = CocoTyler(
+            CocoTylerConfig(
+                instances_json=s.coco_instances_json,
+                images_dir=s.coco_images_dir,
+                max_items=s.coco_max_items,
+                seed=s.coco_seed,
+                lat_range=(s.coco_lat_min, s.coco_lat_max),
+                lon_range=(s.coco_lon_min, s.coco_lon_max),
+            )
+        )
 
     tiles = tyler.generate_tiles()
     s.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
@@ -43,7 +55,7 @@ def run() -> None:
         for t in tiles:
             record = {
                 "image_id": t.image_id,
-                "image_path": "",
+                "image_path": getattr(t, "image_path", ""),
                 "width": t.width,
                 "height": t.height,
                 "tile_id": t.tile_id,
@@ -58,6 +70,9 @@ def run() -> None:
                 },
                 "out_width": t.width,
                 "out_height": t.height,
+                "lat": getattr(t, "lat", None),
+                "lon": getattr(t, "lon", None),
+                "utm_zone": getattr(t, "utm_zone", None),
             }
             f.write(json.dumps(record, ensure_ascii=False))
             f.write("\n")
