@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import numpy as np
 import pandas as pd
 import streamlit as st
+import httpx
 
 from app_streamlit.ui.components import render_grid
 from app_streamlit.utils.images import load_hit_image
@@ -68,13 +69,23 @@ with right:
 run = st.button("Search", type="primary")
 
 if run:
-    with st.spinner("Searching..."):
-        hits = ctx.retriever.search(
-            query_text=query,
-            table_name=table_name,
-            k=int(retrieval_k) if remove_semidups else int(k),
-            where=where if where.strip() else None,
+    try:
+        with st.spinner("Searching..."):
+            hits = ctx.retriever.search(
+                query_text=query,
+                table_name=table_name,
+                k=int(retrieval_k) if remove_semidups else int(k),
+                where=where if where.strip() else None,
+            )
+    except httpx.ConnectError:
+        st.error(
+            "Retriever service is not reachable. Start it with `uv run retriever-service` "
+            f"and verify APP_RETRIEVER_URL ({s.retriever_url})."
         )
+        st.stop()
+    except httpx.HTTPError as exc:
+        st.error(f"Retriever request failed: {exc}")
+        st.stop()
 
     for h in hits:
         h["score_01"] = score_generic(h.get("_distance"))
