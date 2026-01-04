@@ -23,6 +23,8 @@ class EmbedderSettings(BaseSettings):
     max_inflight: int = Field(default=512)
     decode_workers: int = Field(default=8)
     flush_rows: int = Field(default=2048)
+    idle_flush_s: float = Field(default=3.0)
+    job_timeout_s: float = Field(default=30.0)
 
     model_config = SettingsConfigDict(
         env_prefix="EMBEDDER_",

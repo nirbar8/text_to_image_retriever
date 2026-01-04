@@ -21,6 +21,7 @@ embedder-worker = "retriever.components.embedder_worker.cli:main"
 vectordb-service = "retriever.services.vectordb.cli:main"
 retriever-service = "retriever.services.retriever.cli:main"
 app = "app_streamlit.cli:main"
+download-orthophoto = "retriever.scripts.download_orthophoto:main"
 
 [dependency-groups]
 model = [

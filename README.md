@@ -52,6 +52,11 @@ uv pip install -e third_party/perception_models --no-deps
 - Orthophoto: place your GeoTIFF at `data/rasters/orthophoto.tif`
 - Simulated satellite: no data needed (synthetic tiles)
 
+You can download a sample open-source raster:
+```bash
+uv run download-orthophoto
+```
+
 ### 4) Generate tiles
 
 Orthophoto tiles:

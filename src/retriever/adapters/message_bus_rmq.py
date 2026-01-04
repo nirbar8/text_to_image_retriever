@@ -48,6 +48,7 @@ class RabbitMQMessageBus(MessageBus):
         try:
             for method, properties, body in channel.consume(queue, inactivity_timeout=1.0):
                 if method is None:
+                    yield MessageEnvelope(payload={"_idle": True}, ack=lambda: None)
                     continue
                 payload = json.loads(body.decode("utf-8"))
 

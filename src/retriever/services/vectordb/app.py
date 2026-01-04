@@ -34,8 +34,13 @@ def create_app(settings: VectorDBSettings) -> FastAPI:
     def list_tables() -> Dict[str, Any]:
         return {"tables": adapter.list_tables()}
 
+    def _table_exists(table_name: str) -> bool:
+        return table_name in set(adapter.list_tables())
+
     @app.get("/tables/{table_name}/info", response_model=TableInfoResponse)
     def table_info(table_name: str) -> TableInfoResponse:
+        if not _table_exists(table_name):
+            raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
         info = adapter.table_info(table_name)
         return TableInfoResponse(
             db_dir=str(info.db_dir),
@@ -49,6 +54,8 @@ def create_app(settings: VectorDBSettings) -> FastAPI:
 
     @app.post("/tables/{table_name}/search", response_model=VectorQueryResponse)
     def search(table_name: str, req: VectorQueryRequest) -> VectorQueryResponse:
+        if not _table_exists(table_name):
+            return VectorQueryResponse(results=[])
         results = adapter.vector_search(
             table_name=table_name,
             query_vec=req.query_vector,
@@ -60,6 +67,8 @@ def create_app(settings: VectorDBSettings) -> FastAPI:
 
     @app.post("/tables/{table_name}/rows")
     def sample_rows(table_name: str, req: SampleRowsRequest) -> Dict[str, Any]:
+        if not _table_exists(table_name):
+            return {"results": []}
         results = adapter.sample_rows(
             table_name=table_name,
             limit=req.limit,
@@ -82,11 +91,15 @@ def create_app(settings: VectorDBSettings) -> FastAPI:
 
     @app.post("/tables/{table_name}/delete", response_model=DeleteRowsResponse)
     def delete_where(table_name: str, req: DeleteRowsRequest) -> DeleteRowsResponse:
+        if not _table_exists(table_name):
+            raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
         res = adapter.delete_where(table_name, req.where)
         return DeleteRowsResponse(**res)
 
     @app.post("/tables/{table_name}/export", response_model=ExportRowsResponse)
     def export_rows(table_name: str, req: ExportRowsRequest) -> ExportRowsResponse:
+        if not _table_exists(table_name):
+            raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
         written = adapter.export_jsonl(
             table_name=table_name,
             out_path=Path(req.out_path),

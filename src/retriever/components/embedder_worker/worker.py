@@ -8,6 +8,8 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 import torch
 from tqdm import tqdm
 
+import httpx
+
 from retriever.adapters.message_bus_rmq import RabbitMQMessageBus, RmqConfig
 from retriever.adapters.pe_core import PECoreEmbedder
 from retriever.adapters.tile_store import LocalFileTileStore, OrthophotoTileStore, SyntheticSatelliteTileStore
@@ -49,7 +51,10 @@ def _make_tile_store(settings: EmbedderSettings) -> TileStore:
         return LocalFileTileStore()
     if store == "synthetic":
         return SyntheticSatelliteTileStore()
-    return OrthophotoTileStore(default_raster_path=str(settings.raster_path))
+    raster_path = settings.raster_path
+    if not raster_path.exists():
+        raise FileNotFoundError(f"Raster not found: {raster_path}. Set EMBEDDER_RASTER_PATH or use EMBEDDER_TILE_STORE=synthetic.")
+    return OrthophotoTileStore(default_raster_path=str(raster_path))
 
 
 def run() -> None:
@@ -66,7 +71,7 @@ def run() -> None:
 
     executor = ThreadPoolExecutor(max_workers=s.decode_workers)
 
-    job_futures: List[Tuple[Any, IndexRequest, Any]] = []
+    job_futures: List[Tuple[Any, IndexRequest, Any, float]] = []
     write_buffer: List[Dict[str, Any]] = []
     seen_in_run: Set[int] = set()
 
@@ -90,11 +95,20 @@ def run() -> None:
             except Exception:
                 pass
 
+    def _safe_ack(method) -> None:
+        try:
+            method()
+        except Exception:
+            pass
+
     def _existing_image_ids(image_ids: Sequence[int]) -> Set[int]:
         pred = _build_or_predicate_int("image_id", image_ids)
         if not pred:
             return set()
-        rows = vectordb.sample_rows(table_name, where=pred, limit=len(image_ids), columns=["image_id"])
+        try:
+            rows = vectordb.sample_rows(table_name, where=pred, limit=len(image_ids), columns=["image_id"])
+        except httpx.HTTPError:
+            return set()
         return {int(r["image_id"]) for r in rows}
 
     def embed_and_stage(jobs: List[_Job]) -> None:
@@ -145,20 +159,30 @@ def run() -> None:
         nonlocal job_futures
 
         ready: List[Tuple[IndexRequest, Any, torch.Tensor]] = []
-        pending: List[Tuple[Any, IndexRequest, Any]] = []
+        pending: List[Tuple[Any, IndexRequest, Any, float]] = []
 
-        for fut, req, ack in job_futures:
+        now = time.time()
+        for fut, req, ack, start_ts in job_futures:
             if fut.done():
                 try:
                     img_t = fut.result()
                     ready.append((req, ack, img_t))
                 except Exception:
-                    ack()
+                    _safe_ack(ack)
             else:
-                pending.append((fut, req, ack))
+                if now - start_ts > s.job_timeout_s:
+                    try:
+                        fut.cancel()
+                    except Exception:
+                        pass
+                    _safe_ack(ack)
+                else:
+                    pending.append((fut, req, ack, start_ts))
 
         job_futures = pending
         if not ready:
+            if job_futures and int(now - last_message) % 5 == 0:
+                print(f"[pending] futures={len(job_futures)}")
             return
 
         uniq: List[Tuple[IndexRequest, Any, torch.Tensor]] = []
@@ -200,12 +224,35 @@ def run() -> None:
             _ack_all([j.ack for j in jobs])
 
     last_flush = time.time()
+    last_message = time.time()
+    received = 0
 
     try:
-        print(f"Embedder worker started on device={device}. Ctrl+C to stop.")
+        print(
+            f"Embedder worker started on device={device}, queue={s.queue_name}, "
+            f"tile_store={s.tile_store}, table={table_name}. Ctrl+C to stop."
+        )
         for envelope in bus.consume(s.queue_name):
+            if envelope.payload.get("_idle"):
+                now = time.time()
+                if job_futures:
+                    drain_futures(s.batch_size)
+                if now - last_flush > s.idle_flush_s:
+                    flush_writes(force=False)
+                    last_flush = now
+                if now - last_message > 10.0:
+                    print(
+                        f"[idle] no messages for {int(now - last_message)}s; "
+                        f"queue={s.queue_name} tile_store={s.tile_store}"
+                    )
+                continue
+
             req = IndexRequest(**envelope.payload)
             image_id = int(req.image_id)
+            last_message = time.time()
+            received += 1
+            if received == 1 or received % 25 == 0:
+                print(f"[recv] received={received} image_id={image_id}")
 
             if image_id in seen_in_run:
                 envelope.ack()
@@ -215,7 +262,7 @@ def run() -> None:
                 drain_futures(s.batch_size)
 
             fut = executor.submit(_load_and_preprocess, tile_store, req, model.preprocess)
-            job_futures.append((fut, req, envelope.ack))
+            job_futures.append((fut, req, envelope.ack, time.time()))
 
             now = time.time()
             if now - last_flush > 5.0:
