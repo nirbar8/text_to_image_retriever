@@ -138,6 +138,44 @@ class SqliteTilesRepository(TilesRepository):
             for r in rows
         ]
 
+    def get_tile(self, tile_id: str) -> Optional[dict]:
+        cur = self._conn.cursor()
+        cur.execute(
+            """
+            SELECT tile_id, image_path, width, height, status, gid, raster_path,
+                   bbox_minx, bbox_miny, bbox_maxx, bbox_maxy, bbox_crs,
+                   lat, lon, utm_zone
+            FROM tiles WHERE tile_id = ? LIMIT 1
+            """,
+            (tile_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {
+            "tile_id": row[0],
+            "image_path": row[1],
+            "width": row[2],
+            "height": row[3],
+            "status": row[4],
+            "gid": row[5],
+            "raster_path": row[6],
+            "bbox_minx": row[7],
+            "bbox_miny": row[8],
+            "bbox_maxx": row[9],
+            "bbox_maxy": row[10],
+            "bbox_crs": row[11],
+            "lat": row[12],
+            "lon": row[13],
+            "utm_zone": row[14],
+        }
+
+    def status_counts(self) -> dict[str, int]:
+        cur = self._conn.cursor()
+        cur.execute("SELECT status, COUNT(*) FROM tiles GROUP BY status")
+        rows = cur.fetchall()
+        return {row[0] or "": int(row[1]) for row in rows}
+
     def update_status(self, tile_ids: Sequence[str], status: str) -> None:
         cur = self._conn.cursor()
         cur.executemany(
