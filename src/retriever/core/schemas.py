@@ -9,6 +9,7 @@ TILE_BBOX_COLUMNS = ("bbox_minx", "bbox_miny", "bbox_maxx", "bbox_maxy", "bbox_c
 TILE_GEO_COLUMNS = ("lat", "lon", "utm_zone")
 TILE_DB_COLUMNS = (
     "tile_id",
+    "source",
     "image_path",
     "width",
     "height",
@@ -21,6 +22,7 @@ TILE_DB_COLUMNS = (
 )
 TILE_DB_COLUMN_TYPES = {
     "tile_id": "TEXT PRIMARY KEY",
+    "source": "TEXT",
     "image_path": "TEXT",
     "width": "INTEGER",
     "height": "INTEGER",
@@ -44,6 +46,7 @@ VECTOR_METADATA_COLUMNS = (
     "height",
     "run_id",
     "tile_id",
+    "source",
     "gid",
     "raster_path",
     *TILE_BBOX_COLUMNS,
@@ -80,6 +83,7 @@ class IndexRequest(BaseModel):
     utm_zone: Optional[str] = None
     run_id: Optional[str] = None
     tile_store: Optional[str] = None
+    source: Optional[str] = None
     embedder_backend: Optional[str] = None
     embedder_model: Optional[str] = None
 

@@ -45,6 +45,7 @@ class VectorManager:
                     "gid": req.gid,
                     "raster_path": req.raster_path,
                     "tile_store": req.tile_store,
+                    "source": req.source,
                     **bbox_to_columns(req.bbox),
                     **geo_to_columns(req),
                 }

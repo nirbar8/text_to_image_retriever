@@ -308,6 +308,7 @@ def run() -> None:
                 "width": int(req.width),
                 "height": int(req.height),
                 "tile_id": req.tile_id,
+                "source": req.source,
                 "gid": req.gid,
                 "raster_path": req.raster_path,
                 "run_id": req.run_id,
