@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, List
+from typing import Dict, Iterable, List, Tuple
 
 from retriever.adapters.message_bus_rmq import RmqMessageBusFactory
 from retriever.adapters.message_bus_rmq_config import RmqConfig
@@ -20,7 +20,7 @@ class VectorManager:
     bus: MessageBus
     tiles_repo: TilesRepository
 
-    def ingest_manifest(self, manifest_path: Path, queue_name: str) -> int:
+    def ingest_manifest(self, manifest_path: Path, queues: "EmbedderQueues") -> int:
         if not manifest_path.exists():
             raise FileNotFoundError(f"Manifest not found: {manifest_path}")
 
@@ -32,8 +32,9 @@ class VectorManager:
             msg = json.loads(line)
             msg["run_id"] = run_id
             req = IndexRequest(**msg)
-            self.bus.publish(queue_name, req.model_dump())
-            published += 1
+            for queue in queues.for_request(req):
+                self.bus.publish(queue, req.model_dump())
+                published += 1
 
             tiles.append(
                 {
@@ -71,13 +72,81 @@ class VectorManager:
         return f"{ts}_{uuid.uuid4().hex[:10]}"
 
 
+@dataclass(frozen=True)
+class EmbedderQueues:
+    default_queue: str
+    by_backend: Dict[str, str]
+    by_backend_model: Dict[Tuple[str, str], str]
+    all_queues: List[str]
+
+    def for_request(self, req: IndexRequest) -> List[str]:
+        backend = (req.embedder_backend or "").strip()
+        model = (req.embedder_model or "").strip()
+        if not backend:
+            return list(self.all_queues)
+        if model:
+            queue = self.by_backend_model.get((backend, model))
+            if queue:
+                return [queue]
+        if backend in self.by_backend:
+            return [self.by_backend[backend]]
+        raise ValueError(
+            "No queue mapping found for embedder backend "
+            f"'{backend}' (model='{model}'). Configure VICTOR_EMBEDDER_QUEUES."
+        )
+
+
+def _parse_embedder_queues(raw: str, default_queue: str) -> EmbedderQueues:
+    cleaned = [part.strip() for part in raw.split(",") if part.strip()]
+    if not cleaned:
+        return EmbedderQueues(
+            default_queue=default_queue,
+            by_backend={},
+            by_backend_model={},
+            all_queues=[default_queue],
+        )
+    by_backend: Dict[str, str] = {}
+    by_backend_model: Dict[Tuple[str, str], str] = {}
+    all_queues: List[str] = []
+
+    for entry in cleaned:
+        if "=" not in entry:
+            raise ValueError(
+                "Invalid VICTOR_EMBEDDER_QUEUES entry "
+                f"'{entry}'. Use 'backend=queue' or 'backend:model=queue'."
+            )
+        key, queue = entry.split("=", 1)
+        key = key.strip()
+        queue = queue.strip()
+        if not key or not queue:
+            raise ValueError(
+                "Invalid VICTOR_EMBEDDER_QUEUES entry "
+                f"'{entry}'. Use 'backend=queue' or 'backend:model=queue'."
+            )
+        if ":" in key:
+            backend, model = (part.strip() for part in key.split(":", 1))
+            by_backend_model[(backend, model)] = queue
+        else:
+            by_backend[key] = queue
+        if queue not in all_queues:
+            all_queues.append(queue)
+
+    return EmbedderQueues(
+        default_queue=default_queue,
+        by_backend=by_backend,
+        by_backend_model=by_backend_model,
+        all_queues=all_queues,
+    )
+
+
 def run() -> None:
     s = VictorSettings()
     bus = RmqMessageBusFactory().create(RmqConfig(s.rmq_host, s.rmq_port, s.rmq_user, s.rmq_pass))
     repo = SqliteTilesRepository(SqliteTilesConfig(s.tiles_db_path))
     manager = VectorManager(bus=bus, tiles_repo=repo)
-    published = manager.ingest_manifest(s.tiles_manifest_path, queue_name=s.queue_name)
-    print(f"Published {published} index requests to {s.queue_name}")
+    queues = _parse_embedder_queues(s.embedder_queues, s.queue_name)
+    published = manager.ingest_manifest(s.tiles_manifest_path, queues=queues)
+    print(f"Published {published} index requests to {', '.join(queues.all_queues)}")
 
 
 if __name__ == "__main__":
