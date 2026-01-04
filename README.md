@@ -194,6 +194,22 @@ POST /embed/texts   {"texts": ["a dog", ...]}
 -> {"embeddings": [[...], ...]}
 ```
 
+### Run the embedder worker with a different backend
+
+Pick a backend and set env vars inline:
+
+```bash
+EMBEDDER_EMBEDDER_BACKEND=clip EMBEDDER_MODEL_NAME=ViT-B-32 EMBEDDER_CLIP_PRETRAINED=openai uv run embedder-worker
+```
+
+```bash
+EMBEDDER_EMBEDDER_BACKEND=siglip2 EMBEDDER_MODEL_NAME=google/siglip2-base-patch16-224 uv run embedder-worker
+```
+
+```bash
+EMBEDDER_EMBEDDER_BACKEND=remoteclip EMBEDDER_REMOTE_CLIP_URL=http://localhost:9000 uv run embedder-worker
+```
+
 ## Component Commands
 
 - Tyler: `uv run tyler`
