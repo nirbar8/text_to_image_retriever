@@ -37,6 +37,7 @@ class EmbedderSettings(BaseSettings):
     tile_cache_format: str = Field(default="png")
     update_tile_statuses: bool = Field(default=True)
     tiles_db_path: Path = Field(default=Path("data/tiles.db"))
+    require_index_status_before_ack: bool = Field(default=False)
 
     batch_size: int = Field(default=64)
     max_inflight: int = Field(default=512)

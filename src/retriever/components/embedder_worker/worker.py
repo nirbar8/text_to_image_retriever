@@ -28,14 +28,16 @@ def _tile_id_for_req(req: IndexRequest) -> str:
     return req.tile_id or f"tile:{req.image_id}"
 
 
-def _safe_update_status(repo: Optional[TilesRepository], tile_ids: Sequence[str], status: str) -> None:
+def _safe_update_status(repo: Optional[TilesRepository], tile_ids: Sequence[str], status: str) -> bool:
     if not repo or not tile_ids:
-        return
+        return True
     try:
         repo.update_status(tile_ids, status=status)
-    except Exception:
+        return True
+    except Exception as exc:
         # status updates should never crash the worker
-        pass
+        print(f"[warn] tiles db status update failed ({status}) for {len(tile_ids)} tiles: {exc}")
+        return False
 
 
 def _sanitize_token(value: str) -> str:
@@ -129,6 +131,8 @@ def run() -> None:
     tiles_repo: Optional[TilesRepository] = None
     if s.update_tile_statuses:
         tiles_repo = SqliteTilesRepository(SqliteTilesConfig(s.tiles_db_path))
+    if s.require_index_status_before_ack and not s.update_tile_statuses:
+        raise ValueError("require_index_status_before_ack requires update_tile_statuses=true")
 
     model = build_embedder(
         s.embedder_backend,
@@ -256,9 +260,15 @@ def run() -> None:
             return
 
         # Upsert succeeded: mark indexed and ack
-        _safe_update_status(tiles_repo, tile_ids_to_index, status="indexed")
-        for envelope in envelopes_to_ack:
-            _safe_ack(envelope)
+        status_ok = _safe_update_status(tiles_repo, tile_ids_to_index, status="indexed")
+        if status_ok or not s.require_index_status_before_ack:
+            for envelope in envelopes_to_ack:
+                _safe_ack(envelope)
+        else:
+            print(
+                "[warn] tiles db status update failed after vectordb upsert; "
+                "leaving messages unacked for retry."
+            )
 
         indexed_total += len(rows)
         pbar.update(len(rows))

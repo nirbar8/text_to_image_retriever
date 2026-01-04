@@ -24,6 +24,7 @@ vectordb-service = "retriever.services.vectordb.cli:main"
 retriever-service = "retriever.services.retriever.cli:main"
 app = "app_streamlit.cli:main"
 download-orthophoto = "retriever.scripts.download_orthophoto:main"
+tiles-db = "retriever.components.tiles_db.cli:main"
 
 [dependency-groups]
 model = [
