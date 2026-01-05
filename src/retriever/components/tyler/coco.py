@@ -6,6 +6,7 @@ from typing import List, Tuple
 
 import numpy as np
 import orjson
+from shapely.geometry import Polygon
 
 from retriever.core.tile_id import TileKey, canonical_tile_id
 
@@ -15,6 +16,7 @@ class TileSpec:
     image_id: int
     tile_id: str
     image_path: str
+    pixel_polygon: str
     width: int
     height: int
     lat: float
@@ -63,12 +65,14 @@ class CocoTyler:
 
             key = TileKey(source=self._cfg.source_name, z=0, x=image_id, y=0)
             tile_id = canonical_tile_id(key)
+            pixel_poly = Polygon([(0, 0), (width, 0), (width, height), (0, height), (0, 0)])
 
             tiles.append(
                 TileSpec(
                     image_id=image_id,
                     tile_id=tile_id,
                     image_path=image_path,
+                    pixel_polygon=pixel_poly.wkt,
                     width=width,
                     height=height,
                     lat=lat,
