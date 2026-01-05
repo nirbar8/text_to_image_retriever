@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Protocol, 
 class MessageEnvelope:
     payload: dict
     ack: Callable[[], None]
+    nack: Callable[[bool], None]
 
 
 if TYPE_CHECKING:

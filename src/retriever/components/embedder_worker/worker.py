@@ -21,7 +21,7 @@ from retriever.adapters.tile_store import (
 from retriever.clients.vectordb import VectorDBClient
 from retriever.components.embedder_worker.settings import EmbedderSettings
 from retriever.core.interfaces import MessageBus, TileStore, TilesRepository
-from retriever.core.schemas import IndexRequest, bbox_to_columns, geo_to_columns
+from retriever.core.schemas import IndexRequest, geo_to_columns, pixel_polygon_to_columns
 
 
 def _tile_id_for_req(req: IndexRequest) -> str:
@@ -129,6 +129,14 @@ def _safe_ack(envelope: Any) -> None:
         envelope.ack()
     except Exception:
         # ack failures are non-fatal; message will be redelivered
+        pass
+
+
+def _safe_nack(envelope: Any, requeue: bool = True) -> None:
+    try:
+        envelope.nack(requeue=requeue)
+    except Exception:
+        # nack failures are non-fatal; message will be redelivered on connection close
         pass
 
 
@@ -282,6 +290,8 @@ def run() -> None:
         if not items:
             return
 
+        batch_envelopes = [item["envelope"] for item in items]
+
         items_by_embedder: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
         for item in items:
             key = (item["embedder_backend"], item["embedder_model"])
@@ -296,6 +306,8 @@ def run() -> None:
                     f"[warn] embedding batch of {len(images)} images failed "
                     f"(backend={backend}, model={model_name}): {e}"
                 )
+                for envelope in batch_envelopes:
+                    _safe_nack(envelope)
                 return
             for item, emb in zip(group, embeddings):
                 item["embedding"] = emb
@@ -324,7 +336,7 @@ def run() -> None:
                 "tile_store": _normalize_tile_store(req.tile_store or s.tile_store),
                 "embedder_backend": item["embedder_backend"],
                 "embedder_model": item["embedder_model"],
-                **bbox_to_columns(req.bbox),
+                **pixel_polygon_to_columns(req),
                 **geo_to_columns(req),
             }
             table_name = item["table_name"]
@@ -341,9 +353,13 @@ def run() -> None:
                 vectordb.upsert(table_name, rows)
             except httpx.HTTPError as e:
                 print(f"[warn] vectordb HTTP error on upsert of {len(rows)} rows: {e}")
+                for envelope in batch_envelopes:
+                    _safe_nack(envelope)
                 return
             except Exception as e:
                 print(f"[warn] vectordb upsert failed for {len(rows)} rows: {e}")
+                for envelope in batch_envelopes:
+                    _safe_nack(envelope)
                 return
 
         # Upsert succeeded: mark indexed and ack

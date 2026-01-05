@@ -16,11 +16,7 @@ class TileSpec:
     image_id: int
     tile_id: str
     gid: int
-    minx: float
-    miny: float
-    maxx: float
-    maxy: float
-    crs: str
+    pixel_polygon: str
     width: int
     height: int
 
@@ -77,6 +73,12 @@ class SatelliteBoundsTyler:
 
                     tile_poly = box(tile_minx, tile_miny, tile_maxx, tile_maxy)
                     if poly.contains(tile_poly):
+                        pixel_poly = box(
+                            col * self._cfg.tile_size_px,
+                            row * self._cfg.tile_size_px,
+                            (col + 1) * self._cfg.tile_size_px,
+                            (row + 1) * self._cfg.tile_size_px,
+                        )
                         key = TileKey(source=self._cfg.source_name, z=0, x=col, y=row, variant=str(gid))
                         tile_id = canonical_tile_id(key)
                         tiles.append(
@@ -84,11 +86,7 @@ class SatelliteBoundsTyler:
                                 image_id=image_id,
                                 tile_id=tile_id,
                                 gid=int(gid),
-                                minx=float(tile_minx),
-                                miny=float(tile_miny),
-                                maxx=float(tile_maxx),
-                                maxy=float(tile_maxy),
-                                crs=self._cfg.output_crs,
+                                pixel_polygon=pixel_poly.wkt,
                                 width=int(self._cfg.tile_size_px),
                                 height=int(self._cfg.tile_size_px),
                             )

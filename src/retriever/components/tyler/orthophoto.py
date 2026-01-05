@@ -6,7 +6,7 @@ from typing import List
 
 import rasterio
 from rasterio.windows import Window
-from rasterio.warp import transform_bounds
+from shapely.geometry import Polygon
 
 from retriever.core.tile_id import TileKey, canonical_tile_id
 
@@ -16,11 +16,7 @@ class TileSpec:
     image_id: int
     tile_id: str
     raster_path: str
-    minx: float
-    miny: float
-    maxx: float
-    maxy: float
-    crs: str
+    pixel_polygon: str
     width: int
     height: int
 
@@ -47,16 +43,22 @@ class OrthophotoTyler:
             for row in range(0, src.height, self._cfg.stride_px):
                 for col in range(0, src.width, self._cfg.stride_px):
                     window = Window(col, row, self._cfg.tile_size_px, self._cfg.tile_size_px)
+                    full = Window(0, 0, src.width, src.height)
                     if window.col_off >= src.width or window.row_off >= src.height:
                         continue
+                    window = window.intersection(full)
+                    if window.width <= 0 or window.height <= 0:
+                        continue
 
-                    bounds = rasterio.windows.bounds(window, transform=src.transform)
-                    if self._cfg.output_crs != str(src.crs):
-                        minx, miny, maxx, maxy = transform_bounds(
-                            src.crs, self._cfg.output_crs, *bounds, densify_pts=21
-                        )
-                    else:
-                        minx, miny, maxx, maxy = bounds
+                    pixel_poly = Polygon(
+                        [
+                            (window.col_off, window.row_off),
+                            (window.col_off + window.width, window.row_off),
+                            (window.col_off + window.width, window.row_off + window.height),
+                            (window.col_off, window.row_off + window.height),
+                            (window.col_off, window.row_off),
+                        ]
+                    )
 
                     key = TileKey(source=self._cfg.source_name, z=0, x=col, y=row)
                     tile_id = canonical_tile_id(key)
@@ -66,11 +68,7 @@ class OrthophotoTyler:
                             image_id=image_id,
                             tile_id=tile_id,
                             raster_path=str(self._cfg.raster_path),
-                            minx=float(minx),
-                            miny=float(miny),
-                            maxx=float(maxx),
-                            maxy=float(maxy),
-                            crs=self._cfg.output_crs,
+                            pixel_polygon=pixel_poly.wkt,
                             width=int(window.width),
                             height=int(window.height),
                         )

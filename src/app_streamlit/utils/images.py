@@ -6,7 +6,8 @@ from typing import Any, Dict, Optional, Tuple
 from PIL import Image
 
 from retriever.adapters.tile_store import OrthophotoTileStore
-from retriever.core.schemas import IndexRequest, TileBBox
+from retriever.core.geometry import dedup_key, filter_polygons_by_query
+from retriever.core.schemas import IndexRequest
 
 
 def load_image(path: str, max_size: Optional[Tuple[int, int]] = (512, 512)) -> Image.Image:
@@ -26,20 +27,43 @@ def _parse_int(value: Any) -> Optional[int]:
         return None
 
 
-def _hit_bbox(hit: Dict[str, Any]) -> Optional[TileBBox]:
-    minx = hit.get("bbox_minx")
-    miny = hit.get("bbox_miny")
-    maxx = hit.get("bbox_maxx")
-    maxy = hit.get("bbox_maxy")
-    if minx is None or miny is None or maxx is None or maxy is None:
-        return None
-    return TileBBox(
-        minx=float(minx),
-        miny=float(miny),
-        maxx=float(maxx),
-        maxy=float(maxy),
-        crs=str(hit.get("bbox_crs") or "EPSG:4326"),
-    )
+def _hit_pixel_polygon(hit: Dict[str, Any]) -> Optional[str]:
+    pixel_polygon = hit.get("pixel_polygon")
+    if pixel_polygon:
+        return str(pixel_polygon)
+    return None
+
+
+def dedup_hits_by_polygon(
+    hits: list[Dict[str, Any]],
+    extra_fields: Tuple[str, ...] = ("source", "tile_store", "width", "height"),
+) -> list[Dict[str, Any]]:
+    seen: set[str] = set()
+    kept: list[Dict[str, Any]] = []
+    for hit in hits:
+        pixel_polygon = _hit_pixel_polygon(hit)
+        if not pixel_polygon:
+            key = tuple(hit.get(k) for k in extra_fields)
+            token = f"fallback:{key}"
+        else:
+            token = dedup_key(pixel_polygon, *(hit.get(k) for k in extra_fields))
+        if token in seen:
+            continue
+        seen.add(token)
+        kept.append(hit)
+    return kept
+
+
+def filter_hits_by_polygon(
+    hits: list[Dict[str, Any]],
+    query_wkt: str,
+    mode: str = "intersects",
+) -> list[Dict[str, Any]]:
+    for hit in hits:
+        pixel_polygon = _hit_pixel_polygon(hit)
+        if pixel_polygon:
+            hit["pixel_polygon"] = pixel_polygon
+    return filter_polygons_by_query(hits, query_wkt, mode=mode, wkt_key="pixel_polygon")
 
 
 def load_hit_image(
@@ -50,9 +74,9 @@ def load_hit_image(
     if image_path:
         return load_image(image_path, max_size=max_size)
 
-    bbox = _hit_bbox(hit)
-    if bbox is None:
-        raise ValueError("Missing bbox fields for raster-backed tile")
+    pixel_polygon = _hit_pixel_polygon(hit)
+    if pixel_polygon is None:
+        raise ValueError("Missing pixel_polygon fields for raster-backed tile")
 
     raster_path = hit.get("raster_path")
     if not raster_path:
@@ -74,7 +98,7 @@ def load_hit_image(
         tile_id=hit.get("tile_id"),
         gid=_parse_int(hit.get("gid")),
         raster_path=str(raster_path),
-        bbox=bbox,
+        pixel_polygon=pixel_polygon,
         out_width=out_width,
         out_height=out_height,
         lat=hit.get("lat"),

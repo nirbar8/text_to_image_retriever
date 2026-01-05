@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from pydantic import BaseModel, Field
 
 
-TILE_BBOX_COLUMNS = ("bbox_minx", "bbox_miny", "bbox_maxx", "bbox_maxy", "bbox_crs")
+TILE_PIXEL_COLUMNS = ("pixel_polygon",)
 TILE_GEO_COLUMNS = ("lat", "lon", "utm_zone")
 TILE_DB_COLUMNS = (
     "tile_id",
@@ -16,7 +16,7 @@ TILE_DB_COLUMNS = (
     "status",
     "gid",
     "raster_path",
-    *TILE_BBOX_COLUMNS,
+    *TILE_PIXEL_COLUMNS,
     *TILE_GEO_COLUMNS,
     "tile_store",
 )
@@ -29,11 +29,7 @@ TILE_DB_COLUMN_TYPES = {
     "status": "TEXT",
     "gid": "INTEGER",
     "raster_path": "TEXT",
-    "bbox_minx": "REAL",
-    "bbox_miny": "REAL",
-    "bbox_maxx": "REAL",
-    "bbox_maxy": "REAL",
-    "bbox_crs": "TEXT",
+    "pixel_polygon": "TEXT",
     "lat": "REAL",
     "lon": "REAL",
     "utm_zone": "TEXT",
@@ -49,21 +45,13 @@ VECTOR_METADATA_COLUMNS = (
     "source",
     "gid",
     "raster_path",
-    *TILE_BBOX_COLUMNS,
+    *TILE_PIXEL_COLUMNS,
     *TILE_GEO_COLUMNS,
     "tile_store",
     "embedder_backend",
     "embedder_model",
 )
 VECTOR_SCHEMA_COLUMNS = ("id", *VECTOR_METADATA_COLUMNS)
-
-
-class TileBBox(BaseModel):
-    minx: float
-    miny: float
-    maxx: float
-    maxy: float
-    crs: str = "EPSG:4326"
 
 
 class IndexRequest(BaseModel):
@@ -74,7 +62,7 @@ class IndexRequest(BaseModel):
     tile_id: Optional[str] = None
     gid: Optional[int] = None
     raster_path: Optional[str] = None
-    bbox: Optional[TileBBox] = None
+    pixel_polygon: Optional[str] = None
     bands: Optional[Sequence[int]] = None
     out_width: Optional[int] = None
     out_height: Optional[int] = None
@@ -87,15 +75,8 @@ class IndexRequest(BaseModel):
     embedder_backend: Optional[str] = None
     embedder_model: Optional[str] = None
 
-
-def bbox_to_columns(bbox: Optional[TileBBox]) -> Dict[str, Optional[float | str]]:
-    return {
-        "bbox_minx": bbox.minx if bbox else None,
-        "bbox_miny": bbox.miny if bbox else None,
-        "bbox_maxx": bbox.maxx if bbox else None,
-        "bbox_maxy": bbox.maxy if bbox else None,
-        "bbox_crs": bbox.crs if bbox else None,
-    }
+def pixel_polygon_to_columns(req: IndexRequest) -> Dict[str, Optional[str]]:
+    return {"pixel_polygon": req.pixel_polygon}
 
 
 def geo_to_columns(req: IndexRequest) -> Dict[str, Optional[float | str]]:

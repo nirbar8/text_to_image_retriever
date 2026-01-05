@@ -7,6 +7,7 @@ from typing import Optional
 import numpy as np
 from PIL import Image
 
+from retriever.core.geometry import polygon_from_wkt
 from retriever.core.schemas import IndexRequest
 from retriever.core.interfaces import TileStore
 
@@ -31,18 +32,15 @@ class OrthophotoTileStore(TileStore):
     default_raster_path: Optional[str] = None
 
     def get_tile_image(self, request: IndexRequest) -> Image.Image:
-        if request.bbox is None:
-            raise ValueError("bbox is required for OrthophotoTileStore")
+        if not request.pixel_polygon:
+            raise ValueError("pixel_polygon is required for OrthophotoTileStore")
         raster_path = request.raster_path or self.default_raster_path
         if not raster_path:
             raise ValueError("raster_path is required for OrthophotoTileStore")
 
         import rasterio
-        from rasterio.windows import from_bounds
-        from rasterio.warp import transform_bounds
         from rasterio.enums import Resampling
 
-        bbox = request.bbox
         bands = tuple(request.bands) if request.bands else None
         out_w = request.out_width or request.width
         out_h = request.out_height or request.height
@@ -56,14 +54,14 @@ class OrthophotoTileStore(TileStore):
             if len(bands) == 0:
                 raise ValueError("No bands selected")
 
-            if bbox.crs != str(src.crs):
-                left, bottom, right, top = transform_bounds(
-                    bbox.crs, src.crs, bbox.minx, bbox.miny, bbox.maxx, bbox.maxy, densify_pts=21
-                )
-            else:
-                left, bottom, right, top = bbox.minx, bbox.miny, bbox.maxx, bbox.maxy
-
-            window = from_bounds(left, bottom, right, top, transform=src.transform)
+            geom = polygon_from_wkt(str(request.pixel_polygon))
+            minx, miny, maxx, maxy = geom.bounds
+            window = rasterio.windows.Window(
+                col_off=float(minx),
+                row_off=float(miny),
+                width=float(maxx - minx),
+                height=float(maxy - miny),
+            )
             window = window.round_offsets().round_lengths()
             full = rasterio.windows.Window(0, 0, src.width, src.height)
             window = window.intersection(full)
@@ -99,13 +97,15 @@ class SyntheticSatelliteTileStore(TileStore):
     channels: int = 3
 
     def get_tile_image(self, request: IndexRequest) -> Image.Image:
-        if request.bbox is None:
-            raise ValueError("bbox is required for SyntheticSatelliteTileStore")
+        if not request.pixel_polygon:
+            raise ValueError("pixel_polygon is required for SyntheticSatelliteTileStore")
         width = int(request.out_width or request.width)
         height = int(request.out_height or request.height)
         gid = int(request.gid or request.image_id)
 
-        key = (gid, request.bbox.minx, request.bbox.miny, request.bbox.maxx, request.bbox.maxy)
+        geom = polygon_from_wkt(str(request.pixel_polygon))
+        minx, miny, maxx, maxy = geom.bounds
+        key = (gid, minx, miny, maxx, maxy)
         seed = (hash(key) & 0xFFFFFFFF)
         rng = np.random.default_rng(seed)
 
