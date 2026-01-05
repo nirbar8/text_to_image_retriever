@@ -84,15 +84,16 @@ class EmbedderQueues:
         model = (req.embedder_model or "").strip()
         if not backend:
             return list(self.all_queues)
-        if not self.by_backend and not self.by_backend_model:
-            return [self.default_queue]
         if model:
             queue = self.by_backend_model.get((backend, model))
             if queue:
                 return [queue]
         if backend in self.by_backend:
             return [self.by_backend[backend]]
-        return [self.default_queue]
+        raise ValueError(
+            "No queue mapping found for embedder backend "
+            f"'{backend}' (model='{model}'). Configure VICTOR_EMBEDDER_QUEUES."
+        )
 
 
 def _parse_embedder_queues(raw: str, default_queue: str) -> EmbedderQueues:
