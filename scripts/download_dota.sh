@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DOTA_BASE_URL="${DOTA_BASE_URL:-https://captain-whu.github.io/DOTA/DOTA-v1.0}"
 DOTA_ROOT="${DOTA_ROOT:-data/dota}"
+DOTA_URL="${DOTA_URL:-https://github.com/ultralytics/assets/releases/download/v0.0.0/DOTAv1.zip}"
 
 mkdir -p "${DOTA_ROOT}"
 cd "${DOTA_ROOT}"
 
-curl -L -o train.zip "${DOTA_BASE_URL}/train.zip"
-curl -L -o val.zip "${DOTA_BASE_URL}/val.zip"
-curl -L -o train_labels.zip "${DOTA_BASE_URL}/train_labels.zip"
-curl -L -o val_labels.zip "${DOTA_BASE_URL}/val_labels.zip"
+echo "Downloading: ${DOTA_URL}"
+curl -fL --retry 3 --retry-delay 1 -o DOTAv1.zip "${DOTA_URL}"
 
-unzip -q train.zip
-unzip -q val.zip
-unzip -q train_labels.zip
-unzip -q val_labels.zip
+if ! unzip -tq DOTAv1.zip >/dev/null 2>&1; then
+  echo "Downloaded DOTAv1.zip is not a valid zip." >&2
+  exit 1
+fi
 
-echo "Done. DOTA images and labels downloaded under ${DOTA_ROOT}."
+unzip -q DOTAv1.zip
+echo "Done. Extracted under ${DOTA_ROOT}"

@@ -102,9 +102,13 @@ You can download a sample open-source raster:
 uv run download-orthophoto
 ```
 
-Download DOTA (train + val) images and labels:
+Download DOTA images and labels (defaults to val-only for a small download):
 ```bash
 ./scripts/download_dota.sh
+```
+To fetch train + val:
+```bash
+DOTA_SPLITS="train,val" ./scripts/download_dota.sh
 ```
 
 ### 4) Generate tiles
