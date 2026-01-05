@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Iterable, Optional
 
 import pika
@@ -40,40 +41,78 @@ class RabbitMQPollingMessageBus(MessageBus):
         connection.close()
 
     def consume(self, queue: str) -> Iterable[Optional[MessageEnvelope]]:
+        queues = [name.strip() for name in queue.split(",") if name.strip()]
+        if not queues:
+            raise ValueError("No queue names provided to consume().")
         connection = pika.BlockingConnection(self._params())
         channel = connection.channel()
-        channel.queue_declare(queue=queue, durable=True)
+        for q in queues:
+            channel.queue_declare(queue=q, durable=True)
         prefetch = int(self._cfg.prefetch_count)
         if prefetch > 0:
             channel.basic_qos(prefetch_count=prefetch)
 
         try:
-            for method, _properties, body in channel.consume(queue, inactivity_timeout=1.0):
-                if method is None:
-                    yield None
-                    continue
-                payload = json.loads(body.decode("utf-8"))
-                delivery_tag: Optional[int]
-                try:
-                    delivery_tag = int(method.delivery_tag)
-                except Exception:
-                    delivery_tag = None
-
-                if self._cfg.ack_debug:
-                    print(f"[debug] recv delivery_tag={delivery_tag}")
-
-                def _ack(delivery_tag: Optional[int] = delivery_tag) -> None:
-                    if not channel.is_open or not connection.is_open:
-                        return
+            if len(queues) == 1:
+                for method, _properties, body in channel.consume(queues[0], inactivity_timeout=1.0):
+                    if method is None:
+                        yield None
+                        continue
+                    payload = json.loads(body.decode("utf-8"))
+                    delivery_tag: Optional[int]
                     try:
-                        if delivery_tag is not None:
-                            channel.basic_ack(delivery_tag=delivery_tag)
-                            if self._cfg.ack_debug:
-                                print(f"[debug] ack delivery_tag={delivery_tag}")
+                        delivery_tag = int(method.delivery_tag)
                     except Exception:
-                        return
+                        delivery_tag = None
 
-                yield MessageEnvelope(payload=payload, ack=_ack)
+                    if self._cfg.ack_debug:
+                        print(f"[debug] recv delivery_tag={delivery_tag}")
+
+                    def _ack(delivery_tag: Optional[int] = delivery_tag) -> None:
+                        if not channel.is_open or not connection.is_open:
+                            return
+                        try:
+                            if delivery_tag is not None:
+                                channel.basic_ack(delivery_tag=delivery_tag)
+                                if self._cfg.ack_debug:
+                                    print(f"[debug] ack delivery_tag={delivery_tag}")
+                        except Exception:
+                            return
+
+                    yield MessageEnvelope(payload=payload, ack=_ack)
+            else:
+                while True:
+                    got_message = False
+                    for q in queues:
+                        method, _properties, body = channel.basic_get(queue=q, auto_ack=False)
+                        if method is None:
+                            continue
+                        got_message = True
+                        payload = json.loads(body.decode("utf-8"))
+                        delivery_tag: Optional[int]
+                        try:
+                            delivery_tag = int(method.delivery_tag)
+                        except Exception:
+                            delivery_tag = None
+
+                        if self._cfg.ack_debug:
+                            print(f"[debug] recv delivery_tag={delivery_tag}")
+
+                        def _ack(delivery_tag: Optional[int] = delivery_tag) -> None:
+                            if not channel.is_open or not connection.is_open:
+                                return
+                            try:
+                                if delivery_tag is not None:
+                                    channel.basic_ack(delivery_tag=delivery_tag)
+                                    if self._cfg.ack_debug:
+                                        print(f"[debug] ack delivery_tag={delivery_tag}")
+                            except Exception:
+                                return
+
+                        yield MessageEnvelope(payload=payload, ack=_ack)
+                    if not got_message:
+                        time.sleep(1.0)
+                        yield None
         finally:
             try:
                 channel.cancel()

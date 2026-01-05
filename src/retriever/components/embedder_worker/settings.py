@@ -6,22 +6,22 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class EmbedderSettings(BaseSettings):
+    # RabbitMQ
     rmq_host: str = Field(default="localhost")
     rmq_port: int = Field(default=5672)
     rmq_user: str = Field(default="guest")
     rmq_pass: str = Field(default="guest")
-    queue_name: str = Field(default="tiles.to_index")
-    rmq_retry_s: float = Field(default=5.0)
+    queue_names: str = Field(default="tiles.to_index")
     rmq_prefetch_count: int = Field(default=256)
     rmq_heartbeat_s: int = Field(default=0)
     rmq_blocked_connection_timeout_s: float = Field(default=0.0)
     rmq_ack_debug: bool = Field(default=False)
     rmq_consume_style: str = Field(default="callback")
+    rmq_retry_s: float = Field(default=5.0)
 
+    # VectorDB
     vectordb_url: str = Field(default="http://localhost:8001")
     vectordb_timeout_s: float = Field(default=30.0)
-    vectordb_retry_s: float = Field(default=2.0)
-    vectordb_retry_max_s: float = Field(default=30.0)
     table_name: str = Field(default="")
     embedder_backend: str = Field(default="pe_core")
     model_name: str = Field(default="PE-Core-B16-224")
@@ -30,6 +30,7 @@ class EmbedderSettings(BaseSettings):
     remote_clip_timeout_s: float = Field(default=60.0)
     remote_clip_image_format: str = Field(default="png")
 
+    # Tile loading + caching
     tile_store: str = Field(default="orthophoto")
     raster_path: Path = Field(default=Path("data/rasters/orthophoto.tif"))
     cache_tiles: bool = Field(default=True)
@@ -39,16 +40,12 @@ class EmbedderSettings(BaseSettings):
     tiles_db_path: Path = Field(default=Path("data/tiles.db"))
     require_index_status_before_ack: bool = Field(default=False)
 
+    # Batching + logging
     batch_size: int = Field(default=64)
-    max_inflight: int = Field(default=512)
     decode_workers: int = Field(default=8)
-    flush_rows: int = Field(default=2048)
     flush_interval_s: float = Field(default=5.0)
-    idle_flush_s: float = Field(default=3.0)
     job_timeout_s: float = Field(default=30.0)
     recv_log_every: int = Field(default=50)
-    pending_log_every_s: float = Field(default=10.0)
-    idle_log_every_s: float = Field(default=15.0)
 
     model_config = SettingsConfigDict(
         env_prefix="EMBEDDER_",

@@ -41,9 +41,13 @@ class RabbitMQCallbackMessageBus(MessageBus):
         connection.close()
 
     def consume(self, queue: str) -> Iterable[Optional[MessageEnvelope]]:
+        queues = [name.strip() for name in queue.split(",") if name.strip()]
+        if not queues:
+            raise ValueError("No queue names provided to consume().")
         connection = pika.BlockingConnection(self._params())
         channel = connection.channel()
-        channel.queue_declare(queue=queue, durable=True)
+        for q in queues:
+            channel.queue_declare(queue=q, durable=True)
         prefetch = int(self._cfg.prefetch_count)
         if prefetch > 0:
             channel.basic_qos(prefetch_count=prefetch)
@@ -74,7 +78,8 @@ class RabbitMQCallbackMessageBus(MessageBus):
 
             pending.append(MessageEnvelope(payload=payload, ack=_ack))
 
-        channel.basic_consume(queue=queue, on_message_callback=_on_message, auto_ack=False)
+        for q in queues:
+            channel.basic_consume(queue=q, on_message_callback=_on_message, auto_ack=False)
 
         try:
             while True:

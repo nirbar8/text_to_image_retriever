@@ -132,6 +132,13 @@ def _safe_ack(envelope: Any) -> None:
         pass
 
 
+def _parse_queue_names(raw: str) -> List[str]:
+    queues = [name.strip() for name in raw.split(",") if name.strip()]
+    if not queues:
+        raise ValueError("No queue names configured. Set EMBEDDER_QUEUE_NAMES.")
+    return queues
+
+
 def run() -> None:
     s = EmbedderSettings()
 
@@ -183,8 +190,10 @@ def run() -> None:
     indexed_total = 0
     received_total = 0
 
+    queue_names = _parse_queue_names(s.queue_names)
+
     print(
-        f"Embedder worker started on device={device}, queue={s.queue_name}, "
+        f"Embedder worker started on device={device}, queues={', '.join(queue_names)}, "
         f"tile_store={s.tile_store}, backend={s.embedder_backend}, "
         f"table={_resolve_table_name(s, s.model_name)}. Ctrl+C to stop."
     )
@@ -356,7 +365,7 @@ def run() -> None:
     try:
         while True:
             try:
-                for envelope in bus.consume(s.queue_name):
+                for envelope in bus.consume(",".join(queue_names)):
                     if envelope is None:
                         now = time.time()
                         if batch and (now - last_batch_ts) >= s.flush_interval_s:

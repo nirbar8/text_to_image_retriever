@@ -154,7 +154,7 @@ Each component loads its own `.env.*` file via Pydantic settings. Examples live 
 
 - Tyler: `TYLER_MODE`, `TYLER_OUTPUT_JSONL`
 - Vector Manager (victor): `VICTOR_TILES_MANIFEST_PATH`, `VICTOR_TILES_DB_PATH`
-- Embedder: `EMBEDDER_QUEUE_NAME`, `EMBEDDER_VECTORDB_URL`, `EMBEDDER_TILE_STORE`
+- Embedder: `EMBEDDER_QUEUE_NAMES`, `EMBEDDER_VECTORDB_URL`, `EMBEDDER_TILE_STORE`
 - VectorDB service: `VECTORDB_DB_DIR`
 - Retriever service: `RETRIEVER_VECTORDB_URL`
 - App: `APP_RETRIEVER_URL`, `APP_VECTORDB_URL`, `APP_TABLE_NAME`
@@ -193,8 +193,14 @@ VICTOR_EMBEDDER_QUEUES=clip:ViT-B-32=tiles.to_index.clip_vit_b32,clip:ViT-L-14=t
 Each embedder worker instance should listen to its own queue:
 
 ```
-EMBEDDER_QUEUE_NAME=tiles.to_index.pe_core uv run embedder-worker
-EMBEDDER_QUEUE_NAME=tiles.to_index.clip uv run embedder-worker
+EMBEDDER_QUEUE_NAMES=tiles.to_index.pe_core uv run embedder-worker
+EMBEDDER_QUEUE_NAMES=tiles.to_index.clip uv run embedder-worker
+```
+
+If you want a single worker to consume multiple queues, provide a comma-separated list:
+
+```
+EMBEDDER_QUEUE_NAMES=tiles.to_index.pe_core,tiles.to_index.clip uv run embedder-worker
 ```
 
 ## Embedder Backends
