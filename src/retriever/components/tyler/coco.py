@@ -26,7 +26,7 @@ class TileSpec:
 class CocoTylerConfig:
     instances_json: Path
     images_dir: Path
-    max_items: int = 500
+    max_items: int = 10000
     seed: int = 1337
     lat_range: Tuple[float, float] = (-60.0, 60.0)
     lon_range: Tuple[float, float] = (-180.0, 180.0)

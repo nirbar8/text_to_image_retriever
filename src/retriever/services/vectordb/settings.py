@@ -12,7 +12,7 @@ class VectorDBSettings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="VECTORDB_",
-        env_file=".env.vectordb",
+        env_file="config/examples/.env.vectordb",
         env_file_encoding="utf-8",
         case_sensitive=False,
     )

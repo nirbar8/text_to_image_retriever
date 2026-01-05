@@ -34,7 +34,7 @@ class SatelliteSettings(BaseModel):
 class CocoSettings(BaseModel):
     images_dir: Path = Field(default=Path("data/coco/train2017"))
     instances_json: Path = Field(default=Path("data/coco/annotations/instances_train2017.json"))
-    max_items: int = Field(default=500)
+    max_items: int = Field(default=10000)
     seed: int = Field(default=1337)
     lat_min: float = Field(default=-60.0)
     lat_max: float = Field(default=60.0)
@@ -51,7 +51,7 @@ class TylerSettings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="TYLER_",
-        env_file=".env.tyler",
+        env_file="config/examples/.env.tyler",
         env_file_encoding="utf-8",
         case_sensitive=False,
         env_nested_delimiter="__",

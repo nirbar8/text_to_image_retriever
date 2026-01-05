@@ -12,7 +12,7 @@ class AppSettings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="APP_",
-        env_file=".env.app",
+        env_file="config/examples/.env.app",
         env_file_encoding="utf-8",
         case_sensitive=False,
     )

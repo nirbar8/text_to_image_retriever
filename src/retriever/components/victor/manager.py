@@ -96,15 +96,10 @@ class EmbedderQueues:
         )
 
 
-def _parse_embedder_queues(raw: str, default_queue: str) -> EmbedderQueues:
+def _parse_embedder_queues(raw: str) -> EmbedderQueues:
     cleaned = [part.strip() for part in raw.split(",") if part.strip()]
     if not cleaned:
-        return EmbedderQueues(
-            default_queue=default_queue,
-            by_backend={},
-            by_backend_model={},
-            all_queues=[default_queue],
-        )
+        raise ValueError("No queue names configured. Set VICTOR_EMBEDDER_QUEUES.")
     by_backend: Dict[str, str] = {}
     by_backend_model: Dict[Tuple[str, str], str] = {}
     all_queues: List[str] = []
@@ -132,7 +127,7 @@ def _parse_embedder_queues(raw: str, default_queue: str) -> EmbedderQueues:
             all_queues.append(queue)
 
     return EmbedderQueues(
-        default_queue=default_queue,
+        default_queue=all_queues[0],
         by_backend=by_backend,
         by_backend_model=by_backend_model,
         all_queues=all_queues,
@@ -144,7 +139,7 @@ def run() -> None:
     bus = RmqMessageBusFactory().create(RmqConfig(s.rmq_host, s.rmq_port, s.rmq_user, s.rmq_pass))
     repo = SqliteTilesRepository(SqliteTilesConfig(s.tiles_db_path))
     manager = VectorManager(bus=bus, tiles_repo=repo)
-    queues = _parse_embedder_queues(s.embedder_queues, s.queue_name)
+    queues = _parse_embedder_queues(s.embedder_queues)
     published = manager.ingest_manifest(s.tiles_manifest_path, queues=queues)
     print(f"Published {published} index requests to {', '.join(queues.all_queues)}")
 

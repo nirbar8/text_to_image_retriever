@@ -141,7 +141,7 @@ uv run app
 
 ## Configuration
 
-Each component loads its own `.env.*` file via Pydantic settings. Examples live in `config/examples/`.
+Each component loads its own `.env.*` file via Pydantic settings. Defaults are loaded from `config/examples/` and overridden by local `.env.*` files in the repo root.
 
 - `config/examples/.env.tyler`
 - `config/examples/.env.victor`
@@ -153,11 +153,13 @@ Each component loads its own `.env.*` file via Pydantic settings. Examples live 
 ### Required variables per component
 
 - Tyler: `TYLER_MODE`, `TYLER_OUTPUT_JSONL`
-- Vector Manager (victor): `VICTOR_TILES_MANIFEST_PATH`, `VICTOR_TILES_DB_PATH`
-- Embedder: `EMBEDDER_QUEUE_NAMES`, `EMBEDDER_VECTORDB_URL`, `EMBEDDER_TILE_STORE`
+- Vector Manager (victor): `VICTOR_TILES_MANIFEST_PATH`, `VICTOR_TILES_DB_PATH`, `VICTOR_EMBEDDER_QUEUES` (default: `pe_core=tiles.to_index.pe_core`)
+- Embedder: `EMBEDDER_QUEUE_NAMES` (default: `tiles.to_index.pe_core`), `EMBEDDER_VECTORDB_URL`, `EMBEDDER_TILE_STORE`
 - VectorDB service: `VECTORDB_DB_DIR`
 - Retriever service: `RETRIEVER_VECTORDB_URL`
 - App: `APP_RETRIEVER_URL`, `APP_VECTORDB_URL`, `APP_TABLE_NAME`
+
+Tyler uses nested settings; set mode-specific values with `__` (e.g., `TYLER_ORTHOPHOTO__RASTER_PATH`, `TYLER_SATELLITE__BOUNDS_MINX`).
 
 ### Tile store options
 
@@ -178,7 +180,7 @@ If `EMBEDDER_TABLE_NAME` is empty, the worker uses `tiles_<model_name>` (e.g., `
 
 Victor can split requests across multiple RabbitMQ queues based on the requested embedder. When an index request includes `embedder_backend` (and optionally `embedder_model`), Victor publishes only to the matching queue. If a tile does not include embedder metadata, Victor publishes to **all** configured embedder queues.
 
-Configure queues via `VICTOR_EMBEDDER_QUEUES`:
+Configure queues via `VICTOR_EMBEDDER_QUEUES` (default routes `pe_core` to `tiles.to_index.pe_core`):
 
 ```
 VICTOR_EMBEDDER_QUEUES=pe_core=tiles.to_index.pe_core,clip=tiles.to_index.clip,siglip2=tiles.to_index.siglip2

@@ -17,7 +17,7 @@ class RetrieverSettings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="RETRIEVER_",
-        env_file=".env.retriever",
+        env_file="config/examples/.env.retriever",
         env_file_encoding="utf-8",
         case_sensitive=False,
     )

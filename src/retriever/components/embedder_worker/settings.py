@@ -11,7 +11,7 @@ class EmbedderSettings(BaseSettings):
     rmq_port: int = Field(default=5672)
     rmq_user: str = Field(default="guest")
     rmq_pass: str = Field(default="guest")
-    queue_names: str = Field(default="tiles.to_index")
+    queue_names: str = Field(default="tiles.to_index.pe_core")
     rmq_prefetch_count: int = Field(default=256)
     rmq_heartbeat_s: int = Field(default=0)
     rmq_blocked_connection_timeout_s: float = Field(default=0.0)
@@ -49,7 +49,7 @@ class EmbedderSettings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="EMBEDDER_",
-        env_file=".env.embedder",
+        env_file="config/examples/.env.embedder",
         env_file_encoding="utf-8",
         case_sensitive=False,
     )

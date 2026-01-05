@@ -12,14 +12,13 @@ class VictorSettings(BaseSettings):
     rmq_port: int = Field(default=5672)
     rmq_user: str = Field(default="guest")
     rmq_pass: str = Field(default="guest")
-    queue_name: str = Field(default="tiles.to_index")
-    embedder_queues: str = Field(default="")
+    embedder_queues: str = Field(default="pe_core=tiles.to_index.pe_core")
 
     tiles_db_path: Path = Field(default=Path("data/tiles.db"))
 
     model_config = SettingsConfigDict(
         env_prefix="VICTOR_",
-        env_file=".env.victor",
+        env_file="config/examples/.env.victor",
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
