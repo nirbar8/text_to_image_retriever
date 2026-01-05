@@ -13,6 +13,7 @@ class VictorSettings(BaseSettings):
     rmq_user: str = Field(default="guest")
     rmq_pass: str = Field(default="guest")
     queue_name: str = Field(default="tiles.to_index")
+    embedder_queues: str = Field(default="")
 
     tiles_db_path: Path = Field(default=Path("data/tiles.db"))
 

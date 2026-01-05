@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Sequence, Set
 import lancedb
 import pyarrow as pa
 
+from retriever.core.schemas import VECTOR_METADATA_COLUMNS, VECTOR_SCHEMA_COLUMNS
+
 
 @dataclass(frozen=True)
 class LanceCfg:
@@ -112,26 +114,19 @@ class LanceDBAdapter:
         if table_name in self._db.table_names():
             return self._db.open_table(table_name)
 
-        sentinel = {
-            "id": "__schema_sentinel__",
-            vector_col: [0.0] * int(embedding_dim),
-            "image_path": "",
-            "image_id": -1,
-            "width": 0,
-            "height": 0,
-            "run_id": "",
-            "tile_id": "",
-            "gid": -1,
-            "raster_path": "",
-            "bbox_minx": 0.0,
-            "bbox_miny": 0.0,
-            "bbox_maxx": 0.0,
-            "bbox_maxy": 0.0,
-            "bbox_crs": "",
-            "lat": 0.0,
-            "lon": 0.0,
-            "utm_zone": "",
-        }
+        sentinel = {col: "" for col in VECTOR_SCHEMA_COLUMNS}
+        sentinel["id"] = "__schema_sentinel__"
+        sentinel[vector_col] = [0.0] * int(embedding_dim)
+        sentinel["image_id"] = -1
+        sentinel["width"] = 0
+        sentinel["height"] = 0
+        sentinel["gid"] = -1
+        sentinel["bbox_minx"] = 0.0
+        sentinel["bbox_miny"] = 0.0
+        sentinel["bbox_maxx"] = 0.0
+        sentinel["bbox_maxy"] = 0.0
+        sentinel["lat"] = 0.0
+        sentinel["lon"] = 0.0
 
         table = self._db.create_table(table_name, data=[sentinel], mode="overwrite")
         table.delete("image_id = -1")
@@ -140,8 +135,9 @@ class LanceDBAdapter:
 
     def add_rows(self, table_name: str, rows: List[Dict[str, Any]], embedding_dim: int) -> int:
         table = self.get_or_create_table(table_name, embedding_dim=embedding_dim)
-        table.add(rows)
-        return len(rows)
+        filtered = self._filter_rows_to_schema(table.schema, rows)
+        table.add(filtered)
+        return len(filtered)
 
     def upsert_rows(
         self,
@@ -151,6 +147,7 @@ class LanceDBAdapter:
         id_col: str = "image_id",
     ) -> int:
         table = self.get_or_create_table(table_name, embedding_dim=embedding_dim)
+        filtered = self._filter_rows_to_schema(table.schema, rows)
         ids = [row.get(id_col) for row in rows if row.get(id_col) is not None]
         if ids:
             parts: List[str] = []
@@ -165,8 +162,13 @@ class LanceDBAdapter:
                         parts.append(str(val))
             where = f"{id_col} in ({', '.join(parts)})"
             table.delete(where)
-        table.add(rows)
-        return len(rows)
+        table.add(filtered)
+        return len(filtered)
+
+    @staticmethod
+    def _filter_rows_to_schema(schema: pa.Schema, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        allowed = set(schema.names)
+        return [{k: v for k, v in row.items() if k in allowed} for row in rows]
 
     def sample_rows(
         self,
@@ -222,24 +224,7 @@ class LanceDBAdapter:
             if cols:
                 q = q.select(cols)
         else:
-            default_cols = [
-                "image_path",
-                "image_id",
-                "width",
-                "height",
-                "run_id",
-                "tile_id",
-                "gid",
-                "raster_path",
-                "bbox_minx",
-                "bbox_miny",
-                "bbox_maxx",
-                "bbox_maxy",
-                "bbox_crs",
-                "lat",
-                "lon",
-                "utm_zone",
-            ]
+            default_cols = list(VECTOR_METADATA_COLUMNS)
             cols = self._filter_existing_columns(table_name, default_cols)
             if cols:
                 q = q.select(cols)

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence
 
 from retriever.core.interfaces import TilesRepository
+from retriever.core.schemas import TILE_DB_COLUMN_TYPES, TILE_DB_COLUMNS
 
 
 @dataclass(frozen=True)
@@ -22,73 +23,39 @@ class SqliteTilesRepository(TilesRepository):
 
     def _init_schema(self) -> None:
         cur = self._conn.cursor()
+        columns_sql = ",\n                ".join(
+            f"{name} {col_type}" for name, col_type in TILE_DB_COLUMN_TYPES.items()
+        )
         cur.execute(
-            """
+            f"""
             CREATE TABLE IF NOT EXISTS tiles (
-                tile_id TEXT PRIMARY KEY,
-                image_path TEXT,
-                width INTEGER,
-                height INTEGER,
-                status TEXT,
-                gid INTEGER,
-                raster_path TEXT,
-                bbox_minx REAL,
-                bbox_miny REAL,
-                bbox_maxx REAL,
-                bbox_maxy REAL,
-                bbox_crs TEXT,
-                lat REAL,
-                lon REAL,
-                utm_zone TEXT
+                {columns_sql}
             )
             """
         )
+        cur.execute("PRAGMA table_info(tiles)")
+        existing = {row[1] for row in cur.fetchall()}
+        for name, col_type in TILE_DB_COLUMN_TYPES.items():
+            if name not in existing:
+                cur.execute(f"ALTER TABLE tiles ADD COLUMN {name} {col_type}")
         self._conn.commit()
 
     def upsert_tiles(self, tiles: Sequence[dict]) -> None:
         cur = self._conn.cursor()
+        columns = ", ".join(TILE_DB_COLUMNS)
+        placeholders = ", ".join(["?"] * len(TILE_DB_COLUMNS))
+        update_cols = ", ".join(
+            f"{col}=excluded.{col}" for col in TILE_DB_COLUMNS if col != "tile_id"
+        )
         cur.executemany(
-            """
-            INSERT INTO tiles (
-                tile_id, image_path, width, height, status, gid, raster_path,
-                bbox_minx, bbox_miny, bbox_maxx, bbox_maxy, bbox_crs,
-                lat, lon, utm_zone
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            f"""
+            INSERT INTO tiles ({columns})
+            VALUES ({placeholders})
             ON CONFLICT(tile_id) DO UPDATE SET
-                image_path=excluded.image_path,
-                width=excluded.width,
-                height=excluded.height,
-                status=excluded.status,
-                gid=excluded.gid,
-                raster_path=excluded.raster_path,
-                bbox_minx=excluded.bbox_minx,
-                bbox_miny=excluded.bbox_miny,
-                bbox_maxx=excluded.bbox_maxx,
-                bbox_maxy=excluded.bbox_maxy,
-                bbox_crs=excluded.bbox_crs,
-                lat=excluded.lat,
-                lon=excluded.lon,
-                utm_zone=excluded.utm_zone
+                {update_cols}
             """,
             [
-                (
-                    t.get("tile_id"),
-                    t.get("image_path"),
-                    t.get("width"),
-                    t.get("height"),
-                    t.get("status"),
-                    t.get("gid"),
-                    t.get("raster_path"),
-                    t.get("bbox_minx"),
-                    t.get("bbox_miny"),
-                    t.get("bbox_maxx"),
-                    t.get("bbox_maxy"),
-                    t.get("bbox_crs"),
-                    t.get("lat"),
-                    t.get("lon"),
-                    t.get("utm_zone"),
-                )
+                tuple(t.get(col) for col in TILE_DB_COLUMNS)
                 for t in tiles
             ],
         )
@@ -96,55 +63,32 @@ class SqliteTilesRepository(TilesRepository):
 
     def list_tiles(self, limit: int = 1000, status: Optional[str] = None) -> List[dict]:
         cur = self._conn.cursor()
+        columns = ", ".join(TILE_DB_COLUMNS)
         if status:
             cur.execute(
-                """
-                SELECT tile_id, image_path, width, height, status, gid, raster_path,
-                       bbox_minx, bbox_miny, bbox_maxx, bbox_maxy, bbox_crs,
-                       lat, lon, utm_zone
+                f"""
+                SELECT {columns}
                 FROM tiles WHERE status = ? LIMIT ?
                 """,
                 (status, limit),
             )
         else:
             cur.execute(
-                """
-                SELECT tile_id, image_path, width, height, status, gid, raster_path,
-                       bbox_minx, bbox_miny, bbox_maxx, bbox_maxy, bbox_crs,
-                       lat, lon, utm_zone
+                f"""
+                SELECT {columns}
                 FROM tiles LIMIT ?
                 """,
                 (limit,),
             )
         rows = cur.fetchall()
-        return [
-            {
-                "tile_id": r[0],
-                "image_path": r[1],
-                "width": r[2],
-                "height": r[3],
-                "status": r[4],
-                "gid": r[5],
-                "raster_path": r[6],
-                "bbox_minx": r[7],
-                "bbox_miny": r[8],
-                "bbox_maxx": r[9],
-                "bbox_maxy": r[10],
-                "bbox_crs": r[11],
-                "lat": r[12],
-                "lon": r[13],
-                "utm_zone": r[14],
-            }
-            for r in rows
-        ]
+        return [dict(zip(TILE_DB_COLUMNS, r)) for r in rows]
 
     def get_tile(self, tile_id: str) -> Optional[dict]:
         cur = self._conn.cursor()
+        columns = ", ".join(TILE_DB_COLUMNS)
         cur.execute(
-            """
-            SELECT tile_id, image_path, width, height, status, gid, raster_path,
-                   bbox_minx, bbox_miny, bbox_maxx, bbox_maxy, bbox_crs,
-                   lat, lon, utm_zone
+            f"""
+            SELECT {columns}
             FROM tiles WHERE tile_id = ? LIMIT 1
             """,
             (tile_id,),
@@ -152,23 +96,7 @@ class SqliteTilesRepository(TilesRepository):
         row = cur.fetchone()
         if not row:
             return None
-        return {
-            "tile_id": row[0],
-            "image_path": row[1],
-            "width": row[2],
-            "height": row[3],
-            "status": row[4],
-            "gid": row[5],
-            "raster_path": row[6],
-            "bbox_minx": row[7],
-            "bbox_miny": row[8],
-            "bbox_maxx": row[9],
-            "bbox_maxy": row[10],
-            "bbox_crs": row[11],
-            "lat": row[12],
-            "lon": row[13],
-            "utm_zone": row[14],
-        }
+        return dict(zip(TILE_DB_COLUMNS, row))
 
     def status_counts(self) -> dict[str, int]:
         cur = self._conn.cursor()

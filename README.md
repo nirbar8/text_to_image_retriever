@@ -153,7 +153,7 @@ Each component loads its own `.env.*` file via Pydantic settings. Examples live 
 ### Required variables per component
 
 - Tyler: `TYLER_MODE`, `TYLER_OUTPUT_JSONL`
-- Vector Manager (victor): `VICTOR_TILES_MANIFEST_PATH`, `VICTOR_QUEUE_NAME`, `VICTOR_TILES_DB_PATH`
+- Vector Manager (victor): `VICTOR_TILES_MANIFEST_PATH`, `VICTOR_TILES_DB_PATH`
 - Embedder: `EMBEDDER_QUEUE_NAME`, `EMBEDDER_VECTORDB_URL`, `EMBEDDER_TILE_STORE`
 - VectorDB service: `VECTORDB_DB_DIR`
 - Retriever service: `RETRIEVER_VECTORDB_URL`
@@ -173,6 +173,29 @@ Each component loads its own `.env.*` file via Pydantic settings. Examples live 
 ### Table naming
 
 If `EMBEDDER_TABLE_NAME` is empty, the worker uses `tiles_<model_name>` (e.g., `tiles_pe_core_b16_224`).
+
+## Queue Routing by Embedder
+
+Victor can split requests across multiple RabbitMQ queues based on the requested embedder. When an index request includes `embedder_backend` (and optionally `embedder_model`), Victor publishes only to the matching queue. If a tile does not include embedder metadata, Victor publishes to **all** configured embedder queues.
+
+Configure queues via `VICTOR_EMBEDDER_QUEUES`:
+
+```
+VICTOR_EMBEDDER_QUEUES=pe_core=tiles.to_index.pe_core,clip=tiles.to_index.clip,siglip2=tiles.to_index.siglip2
+```
+
+To route by both backend and model, include the model name:
+
+```
+VICTOR_EMBEDDER_QUEUES=clip:ViT-B-32=tiles.to_index.clip_vit_b32,clip:ViT-L-14=tiles.to_index.clip_vit_l14
+```
+
+Each embedder worker instance should listen to its own queue:
+
+```
+EMBEDDER_QUEUE_NAME=tiles.to_index.pe_core uv run embedder-worker
+EMBEDDER_QUEUE_NAME=tiles.to_index.clip uv run embedder-worker
+```
 
 ## Embedder Backends
 

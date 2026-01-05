@@ -21,7 +21,7 @@ from retriever.adapters.tile_store import (
 from retriever.clients.vectordb import VectorDBClient
 from retriever.components.embedder_worker.settings import EmbedderSettings
 from retriever.core.interfaces import MessageBus, TileStore, TilesRepository
-from retriever.core.schemas import IndexRequest
+from retriever.core.schemas import IndexRequest, bbox_to_columns, geo_to_columns
 
 
 def _tile_id_for_req(req: IndexRequest) -> str:
@@ -81,14 +81,26 @@ def _load_tile(
     return im, resolved
 
 
-def _resolve_table_name(settings: EmbedderSettings) -> str:
+def _resolve_table_name(settings: EmbedderSettings, model_name: str) -> str:
     if settings.table_name.strip():
         return settings.table_name
-    return f"tiles_{settings.model_name.lower().replace('-', '_')}"
+    safe_model = _sanitize_token(model_name.lower().replace("-", "_"))
+    return f"tiles_{safe_model}"
 
 
-def _make_tile_store(settings: EmbedderSettings) -> TileStore:
-    store = settings.tile_store.lower()
+def _normalize_tile_store(value: str) -> str:
+    store = value.strip().lower()
+    aliases = {
+        "file": "local",
+        "files": "local",
+        "filesystem": "local",
+        "satellite": "synthetic",
+    }
+    return aliases.get(store, store)
+
+
+def _make_tile_store(settings: EmbedderSettings, tile_store: str) -> TileStore:
+    store = _normalize_tile_store(tile_store)
     if store == "local":
         return LocalFileTileStore()
     if store == "synthetic":
@@ -100,6 +112,16 @@ def _make_tile_store(settings: EmbedderSettings) -> TileStore:
             f"Set EMBEDDER_RASTER_PATH or use EMBEDDER_TILE_STORE=synthetic."
         )
     return OrthophotoTileStore(default_raster_path=str(raster_path))
+
+
+def _resolve_embedder_backend(req: IndexRequest, settings: EmbedderSettings) -> str:
+    override = (req.embedder_backend or "").strip()
+    return override or settings.embedder_backend
+
+
+def _resolve_embedder_model(req: IndexRequest, settings: EmbedderSettings) -> str:
+    override = (req.embedder_model or "").strip()
+    return override or settings.model_name
 
 
 def _safe_ack(envelope: Any) -> None:
@@ -125,7 +147,6 @@ def run() -> None:
     )
     bus: MessageBus = RmqMessageBusFactory().create(bus_cfg, style=s.rmq_consume_style)
 
-    tile_store = _make_tile_store(s)
     vectordb = VectorDBClient(s.vectordb_url, timeout_s=s.vectordb_timeout_s)
 
     tiles_repo: Optional[TilesRepository] = None
@@ -134,18 +155,26 @@ def run() -> None:
     if s.require_index_status_before_ack and not s.update_tile_statuses:
         raise ValueError("require_index_status_before_ack requires update_tile_statuses=true")
 
-    model = build_embedder(
-        s.embedder_backend,
-        s.model_name,
-        clip_pretrained=s.clip_pretrained,
-        remote_clip_url=s.remote_clip_url,
-        remote_clip_timeout_s=s.remote_clip_timeout_s,
-        remote_clip_image_format=s.remote_clip_image_format,
-    )
-    device = model.device
+    embedder_cache: Dict[Tuple[str, str], Any] = {}
+
+    def get_embedder(backend: str, model_name: str) -> Any:
+        key = (backend.strip().lower(), model_name)
+        if key not in embedder_cache:
+            embedder_cache[key] = build_embedder(
+                backend,
+                model_name,
+                clip_pretrained=s.clip_pretrained,
+                remote_clip_url=s.remote_clip_url,
+                remote_clip_timeout_s=s.remote_clip_timeout_s,
+                remote_clip_image_format=s.remote_clip_image_format,
+            )
+        return embedder_cache[key]
+
+    primary_model = get_embedder(s.embedder_backend, s.model_name)
+    device = primary_model.device
     assert device is not None
 
-    table_name = _resolve_table_name(s)
+    tile_store_cache: Dict[str, TileStore] = {}
 
     # Pool for tile loading (I/O bound)
     executor = ThreadPoolExecutor(max_workers=s.decode_workers)
@@ -157,7 +186,7 @@ def run() -> None:
     print(
         f"Embedder worker started on device={device}, queue={s.queue_name}, "
         f"tile_store={s.tile_store}, backend={s.embedder_backend}, "
-        f"table={table_name}. Ctrl+C to stop."
+        f"table={_resolve_table_name(s, s.model_name)}. Ctrl+C to stop."
     )
 
     # batch holds tuples of (IndexRequest, envelope)
@@ -176,6 +205,20 @@ def run() -> None:
         # Submit tile loads in parallel for this batch
         futures: List[Tuple[IndexRequest, Any, Any]] = []
         for req, envelope in batch:
+            store_name = _normalize_tile_store(req.tile_store or s.tile_store)
+            if store_name not in tile_store_cache:
+                try:
+                    tile_store_cache[store_name] = _make_tile_store(s, store_name)
+                except Exception as exc:
+                    tile_id = _tile_id_for_req(req)
+                    print(
+                        f"[warn] failed to init tile store '{store_name}' "
+                        f"for image_id={req.image_id}: {exc}"
+                    )
+                    _safe_update_status(tiles_repo, [tile_id], status="failed")
+                    _safe_ack(envelope)
+                    continue
+            tile_store = tile_store_cache[store_name]
             fut = executor.submit(
                 _load_tile,
                 tile_store,
@@ -185,7 +228,7 @@ def run() -> None:
             )
             futures.append((req, envelope, fut))
 
-        items: List[Tuple[IndexRequest, Any, Any, Optional[str]]] = []
+        items: List[Dict[str, Any]] = []
 
         for req, envelope, fut in futures:
             tile_id = _tile_id_for_req(req)
@@ -193,12 +236,36 @@ def run() -> None:
                 img, resolved_path = fut.result(timeout=s.job_timeout_s)
             except Exception as e:
                 # Loading failed or timed out: mark failed and ack, we won't retry this one
-                print(f"[warn] failed to load tile for image_id={req.image_id}: {e}")
+                store_name = _normalize_tile_store(req.tile_store or s.tile_store)
+                print(
+                    f"[warn] failed to load tile for image_id={req.image_id} "
+                    f"(tile_store={store_name}): {e}"
+                )
                 _safe_update_status(tiles_repo, [tile_id], status="failed")
                 _safe_ack(envelope)
                 continue
 
-            items.append((req, envelope, img, resolved_path))
+            backend = _resolve_embedder_backend(req, s)
+            model_name = _resolve_embedder_model(req, s)
+            if s.table_name.strip() and (backend != s.embedder_backend or model_name != s.model_name):
+                print(
+                    "[warn] embedder override ignored because EMBEDDER_TABLE_NAME is set; "
+                    f"image_id={req.image_id}, backend={backend}, model={model_name}."
+                )
+                _safe_update_status(tiles_repo, [tile_id], status="failed")
+                _safe_ack(envelope)
+                continue
+            items.append(
+                {
+                    "req": req,
+                    "envelope": envelope,
+                    "img": img,
+                    "resolved_path": resolved_path,
+                    "embedder_backend": backend,
+                    "embedder_model": model_name,
+                    "table_name": _resolve_table_name(s, model_name),
+                }
+            )
 
         # Clear the batch (we will rebuild based on which items succeeded)
         batch = []
@@ -206,20 +273,33 @@ def run() -> None:
         if not items:
             return
 
-        # Embed all images in one go
-        images = [img for (_req, _env, img, _path) in items]
-        try:
-            embeddings = model.embed_pil_images(images).numpy()
-        except Exception as e:
-            # Embedding failed: don't ack anything, messages will be redelivered later
-            print(f"[warn] embedding batch of {len(images)} images failed: {e}")
-            return
+        items_by_embedder: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+        for item in items:
+            key = (item["embedder_backend"], item["embedder_model"])
+            items_by_embedder.setdefault(key, []).append(item)
 
-        rows: List[Dict[str, Any]] = []
-        envelopes_to_ack: List[Any] = []
-        tile_ids_to_index: List[str] = []
+        for (backend, model_name), group in items_by_embedder.items():
+            images = [item["img"] for item in group]
+            try:
+                embeddings = get_embedder(backend, model_name).embed_pil_images(images).numpy()
+            except Exception as e:
+                print(
+                    f"[warn] embedding batch of {len(images)} images failed "
+                    f"(backend={backend}, model={model_name}): {e}"
+                )
+                return
+            for item, emb in zip(group, embeddings):
+                item["embedding"] = emb
 
-        for (req, envelope, _img, resolved_path), emb in zip(items, embeddings):
+        rows_by_table: Dict[str, List[Dict[str, Any]]] = {}
+        envelopes_by_table: Dict[str, List[Any]] = {}
+        tile_ids_by_table: Dict[str, List[str]] = {}
+
+        for item in items:
+            req = item["req"]
+            envelope = item["envelope"]
+            resolved_path = item["resolved_path"]
+            emb = item["embedding"]
             row = {
                 "id": str(req.image_id),
                 "embedding": emb.tolist(),
@@ -228,50 +308,50 @@ def run() -> None:
                 "width": int(req.width),
                 "height": int(req.height),
                 "tile_id": req.tile_id,
+                "source": req.source,
                 "gid": req.gid,
                 "raster_path": req.raster_path,
-                "bbox_minx": req.bbox.minx if req.bbox else None,
-                "bbox_miny": req.bbox.miny if req.bbox else None,
-                "bbox_maxx": req.bbox.maxx if req.bbox else None,
-                "bbox_maxy": req.bbox.maxy if req.bbox else None,
-                "bbox_crs": req.bbox.crs if req.bbox else None,
-                "lat": req.lat,
-                "lon": req.lon,
-                "utm_zone": req.utm_zone,
                 "run_id": req.run_id,
+                "tile_store": _normalize_tile_store(req.tile_store or s.tile_store),
+                "embedder_backend": item["embedder_backend"],
+                "embedder_model": item["embedder_model"],
+                **bbox_to_columns(req.bbox),
+                **geo_to_columns(req),
             }
-            rows.append(row)
-            envelopes_to_ack.append(envelope)
-            tile_ids_to_index.append(_tile_id_for_req(req))
+            table_name = item["table_name"]
+            rows_by_table.setdefault(table_name, []).append(row)
+            envelopes_by_table.setdefault(table_name, []).append(envelope)
+            tile_ids_by_table.setdefault(table_name, []).append(_tile_id_for_req(req))
 
         # Mark as waiting for index
-        _safe_update_status(tiles_repo, tile_ids_to_index, status="waiting for index")
+        for tile_ids in tile_ids_by_table.values():
+            _safe_update_status(tiles_repo, tile_ids, status="waiting for index")
 
-        # Single upsert for the whole batch
-        try:
-            vectordb.upsert(table_name, rows)
-        except httpx.HTTPError as e:
-            print(f"[warn] vectordb HTTP error on upsert of {len(rows)} rows: {e}")
-            # Leave messages unacked -> redelivery later
-            return
-        except Exception as e:
-            print(f"[warn] vectordb upsert failed for {len(rows)} rows: {e}")
-            # Leave messages unacked -> redelivery later
-            return
+        for table_name, rows in rows_by_table.items():
+            try:
+                vectordb.upsert(table_name, rows)
+            except httpx.HTTPError as e:
+                print(f"[warn] vectordb HTTP error on upsert of {len(rows)} rows: {e}")
+                return
+            except Exception as e:
+                print(f"[warn] vectordb upsert failed for {len(rows)} rows: {e}")
+                return
 
         # Upsert succeeded: mark indexed and ack
-        status_ok = _safe_update_status(tiles_repo, tile_ids_to_index, status="indexed")
-        if status_ok or not s.require_index_status_before_ack:
-            for envelope in envelopes_to_ack:
-                _safe_ack(envelope)
-        else:
-            print(
-                "[warn] tiles db status update failed after vectordb upsert; "
-                "leaving messages unacked for retry."
-            )
+        for table_name, tile_ids in tile_ids_by_table.items():
+            status_ok = _safe_update_status(tiles_repo, tile_ids, status="indexed")
+            if status_ok or not s.require_index_status_before_ack:
+                for envelope in envelopes_by_table.get(table_name, []):
+                    _safe_ack(envelope)
+            else:
+                print(
+                    "[warn] tiles db status update failed after vectordb upsert; "
+                    "leaving messages unacked for retry."
+                )
 
-        indexed_total += len(rows)
-        pbar.update(len(rows))
+        indexed_count = sum(len(rows) for rows in rows_by_table.values())
+        indexed_total += indexed_count
+        pbar.update(indexed_count)
 
     try:
         while True:
