@@ -76,7 +76,23 @@ class RabbitMQCallbackMessageBus(MessageBus):
                 except Exception:
                     return
 
-            pending.append(MessageEnvelope(payload=payload, ack=_ack))
+            def _nack(
+                requeue: bool = True,
+                delivery_tag: Optional[int] = delivery_tag,
+            ) -> None:
+                if not channel.is_open or not connection.is_open:
+                    return
+                try:
+                    if delivery_tag is not None:
+                        channel.basic_nack(delivery_tag=delivery_tag, requeue=requeue)
+                        if self._cfg.ack_debug:
+                            print(
+                                f"[debug] nack delivery_tag={delivery_tag} requeue={requeue}"
+                            )
+                except Exception:
+                    return
+
+            pending.append(MessageEnvelope(payload=payload, ack=_ack, nack=_nack))
 
         for q in queues:
             channel.basic_consume(queue=q, on_message_callback=_on_message, auto_ack=False)

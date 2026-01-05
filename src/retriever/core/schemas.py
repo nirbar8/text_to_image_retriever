@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 TILE_PIXEL_COLUMNS = ("pixel_polygon",)

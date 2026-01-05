@@ -132,6 +132,14 @@ def _safe_ack(envelope: Any) -> None:
         pass
 
 
+def _safe_nack(envelope: Any, requeue: bool = True) -> None:
+    try:
+        envelope.nack(requeue=requeue)
+    except Exception:
+        # nack failures are non-fatal; message will be redelivered on connection close
+        pass
+
+
 def _parse_queue_names(raw: str) -> List[str]:
     queues = [name.strip() for name in raw.split(",") if name.strip()]
     if not queues:
@@ -282,6 +290,8 @@ def run() -> None:
         if not items:
             return
 
+        batch_envelopes = [item["envelope"] for item in items]
+
         items_by_embedder: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
         for item in items:
             key = (item["embedder_backend"], item["embedder_model"])
@@ -296,6 +306,8 @@ def run() -> None:
                     f"[warn] embedding batch of {len(images)} images failed "
                     f"(backend={backend}, model={model_name}): {e}"
                 )
+                for envelope in batch_envelopes:
+                    _safe_nack(envelope)
                 return
             for item, emb in zip(group, embeddings):
                 item["embedding"] = emb
@@ -341,9 +353,13 @@ def run() -> None:
                 vectordb.upsert(table_name, rows)
             except httpx.HTTPError as e:
                 print(f"[warn] vectordb HTTP error on upsert of {len(rows)} rows: {e}")
+                for envelope in batch_envelopes:
+                    _safe_nack(envelope)
                 return
             except Exception as e:
                 print(f"[warn] vectordb upsert failed for {len(rows)} rows: {e}")
+                for envelope in batch_envelopes:
+                    _safe_nack(envelope)
                 return
 
         # Upsert succeeded: mark indexed and ack
