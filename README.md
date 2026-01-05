@@ -95,10 +95,16 @@ uv pip install -e third_party/perception_models --no-deps
 
 - Orthophoto: place your GeoTIFF at `data/rasters/orthophoto.tif`
 - Simulated satellite: no data needed (synthetic tiles)
+- DOTA aerial imagery: download DOTA v1.0 images + labels
 
 You can download a sample open-source raster:
 ```bash
 uv run download-orthophoto
+```
+
+Download DOTA (train + val) images and labels:
+```bash
+./scripts/download_dota.sh
 ```
 
 ### 4) Generate tiles
@@ -111,6 +117,11 @@ uv run tyler --mode orthophoto
 Simulated satellite tiles:
 ```bash
 uv run tyler --mode satellite
+```
+
+DOTA tiles (local images):
+```bash
+uv run tyler --mode dota
 ```
 
 ### 5) Start RabbitMQ

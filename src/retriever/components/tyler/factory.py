@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from retriever.components.tyler.coco import CocoTyler, CocoTylerConfig
+from retriever.components.tyler.dota import DotaTyler, DotaTylerConfig
 from retriever.components.tyler.orthophoto import OrthophotoTyler, OrthophotoTylerConfig
 from retriever.components.tyler.satellite import SatelliteBoundsTyler, SatelliteTylerConfig
 from retriever.components.tyler.settings import TylerMode, TylerSettings
@@ -10,7 +11,7 @@ class TylerFactory:
     def __init__(self, settings: TylerSettings) -> None:
         self._settings = settings
 
-    def build(self) -> CocoTyler | OrthophotoTyler | SatelliteBoundsTyler:
+    def build(self) -> CocoTyler | OrthophotoTyler | SatelliteBoundsTyler | DotaTyler:
         mode = self._settings.mode
         if mode is TylerMode.ORTHOPHOTO:
             cfg = self._settings.orthophoto
@@ -40,6 +41,17 @@ class TylerFactory:
                 CocoTylerConfig(
                     instances_json=cfg.instances_json,
                     images_dir=cfg.images_dir,
+                    max_items=cfg.max_items,
+                    seed=cfg.seed,
+                    lat_range=(cfg.lat_min, cfg.lat_max),
+                    lon_range=(cfg.lon_min, cfg.lon_max),
+                )
+            )
+        if mode is TylerMode.DOTA:
+            cfg = self._settings.dota
+            return DotaTyler(
+                DotaTylerConfig(
+                    images_root=cfg.images_root,
                     max_items=cfg.max_items,
                     seed=cfg.seed,
                     lat_range=(cfg.lat_min, cfg.lat_max),
