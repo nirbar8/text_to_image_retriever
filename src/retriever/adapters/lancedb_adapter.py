@@ -121,10 +121,7 @@ class LanceDBAdapter:
         sentinel["width"] = 0
         sentinel["height"] = 0
         sentinel["gid"] = -1
-        sentinel["bbox_minx"] = 0.0
-        sentinel["bbox_miny"] = 0.0
-        sentinel["bbox_maxx"] = 0.0
-        sentinel["bbox_maxy"] = 0.0
+        sentinel["pixel_polygon"] = ""
         sentinel["lat"] = 0.0
         sentinel["lon"] = 0.0
 

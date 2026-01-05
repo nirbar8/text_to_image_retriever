@@ -21,7 +21,7 @@ from retriever.adapters.tile_store import (
 from retriever.clients.vectordb import VectorDBClient
 from retriever.components.embedder_worker.settings import EmbedderSettings
 from retriever.core.interfaces import MessageBus, TileStore, TilesRepository
-from retriever.core.schemas import IndexRequest, bbox_to_columns, geo_to_columns
+from retriever.core.schemas import IndexRequest, geo_to_columns, pixel_polygon_to_columns
 
 
 def _tile_id_for_req(req: IndexRequest) -> str:
@@ -324,7 +324,7 @@ def run() -> None:
                 "tile_store": _normalize_tile_store(req.tile_store or s.tile_store),
                 "embedder_backend": item["embedder_backend"],
                 "embedder_model": item["embedder_model"],
-                **bbox_to_columns(req.bbox),
+                **pixel_polygon_to_columns(req),
                 **geo_to_columns(req),
             }
             table_name = item["table_name"]

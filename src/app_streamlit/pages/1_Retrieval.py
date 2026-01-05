@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -8,7 +8,7 @@ import streamlit as st
 import httpx
 
 from app_streamlit.ui.components import render_grid
-from app_streamlit.utils.images import load_hit_image
+from app_streamlit.utils.images import dedup_hits_by_polygon, filter_hits_by_polygon, load_hit_image
 from app_streamlit.utils.state import get_context
 
 
@@ -19,19 +19,14 @@ def score_generic(distance: Optional[float]) -> Optional[float]:
     return float(1.0 / (1.0 + d))
 
 
-def simple_semidup_filter(
+def _maybe_filter_by_polygon(
     hits: List[Dict[str, Any]],
-    key_fields: Tuple[str, ...] = ("image_id", "tile_id"),
+    query_wkt: str,
+    mode: str,
 ) -> List[Dict[str, Any]]:
-    seen: Set[Tuple[Any, ...]] = set()
-    kept: List[Dict[str, Any]] = []
-    for h in hits:
-        key = tuple(h.get(k) for k in key_fields)
-        if key in seen:
-            continue
-        seen.add(key)
-        kept.append(h)
-    return kept
+    if not query_wkt.strip():
+        return hits
+    return filter_hits_by_polygon(hits, query_wkt=query_wkt, mode=mode)
 
 
 st.title("Retrieval")
@@ -53,6 +48,8 @@ with right:
 
     st.markdown("### Post-processing")
     remove_semidups = st.toggle("Remove semi-duplicates", value=False)
+    filter_wkt = st.text_input("Filter by pixel polygon (WKT)", value="")
+    filter_mode = st.selectbox("Polygon filter mode", ["intersects", "within"])
     retrieval_k = st.slider(
         "Internal retrieval K",
         min_value=max(k, 20),
@@ -90,8 +87,10 @@ if run:
     for h in hits:
         h["score_01"] = score_generic(h.get("_distance"))
 
+    hits = _maybe_filter_by_polygon(hits, query_wkt=filter_wkt, mode=filter_mode)
+
     if remove_semidups:
-        hits = simple_semidup_filter(hits)
+        hits = dedup_hits_by_polygon(hits)
         hits = hits[: int(k)]
     else:
         hits = hits[: int(k)]

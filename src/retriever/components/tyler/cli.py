@@ -7,18 +7,6 @@ from retriever.components.tyler.factory import TylerFactory
 from retriever.components.tyler.settings import TylerMode, TylerSettings
 
 
-def _build_bbox(tile: object) -> dict[str, float | str] | None:
-    if all(hasattr(tile, attr) for attr in ("minx", "miny", "maxx", "maxy", "crs")):
-        return {
-            "minx": tile.minx,
-            "miny": tile.miny,
-            "maxx": tile.maxx,
-            "maxy": tile.maxy,
-            "crs": tile.crs,
-        }
-    return None
-
-
 def run() -> None:
     parser = argparse.ArgumentParser(description="Generate tiles from orthophoto or satellite bounds.")
     parser.add_argument("--mode", choices=["orthophoto", "satellite", "coco"], default=None)
@@ -51,7 +39,7 @@ def run() -> None:
                 "tile_id": t.tile_id,
                 "gid": getattr(t, "gid", None),
                 "raster_path": getattr(t, "raster_path", None),
-                "bbox": _build_bbox(t),
+                "pixel_polygon": getattr(t, "pixel_polygon", None),
                 "out_width": t.width,
                 "out_height": t.height,
                 "lat": getattr(t, "lat", None),

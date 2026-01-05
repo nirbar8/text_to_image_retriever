@@ -12,7 +12,7 @@ from retriever.adapters.message_bus_rmq_config import RmqConfig
 from retriever.adapters.tiles_repo_sqlite import SqliteTilesConfig, SqliteTilesRepository
 from retriever.components.victor.settings import VictorSettings
 from retriever.core.interfaces import MessageBus, TilesRepository
-from retriever.core.schemas import IndexRequest, bbox_to_columns, geo_to_columns
+from retriever.core.schemas import IndexRequest, geo_to_columns, pixel_polygon_to_columns
 
 
 @dataclass
@@ -47,7 +47,7 @@ class VectorManager:
                     "raster_path": req.raster_path,
                     "tile_store": req.tile_store,
                     "source": req.source,
-                    **bbox_to_columns(req.bbox),
+                    **pixel_polygon_to_columns(req),
                     **geo_to_columns(req),
                 }
             )
