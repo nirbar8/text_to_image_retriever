@@ -21,7 +21,7 @@ def _build_bbox(tile: object) -> dict[str, float | str] | None:
 
 def run() -> None:
     parser = argparse.ArgumentParser(description="Generate tiles from orthophoto or satellite bounds.")
-    parser.add_argument("--mode", choices=["orthophoto", "satellite", "coco"], default=None)
+    parser.add_argument("--mode", choices=["orthophoto", "satellite", "coco", "dota"], default=None)
     args = parser.parse_args()
 
     s = TylerSettings()
@@ -34,11 +34,13 @@ def run() -> None:
         TylerMode.ORTHOPHOTO: "orthophoto",
         TylerMode.SATELLITE: "synthetic",
         TylerMode.COCO: "local",
+        TylerMode.DOTA: "local",
     }.get(s.mode, "orthophoto")
     source = {
         TylerMode.ORTHOPHOTO: "orthophoto",
         TylerMode.SATELLITE: "satellite",
         TylerMode.COCO: "coco",
+        TylerMode.DOTA: "dota",
     }.get(s.mode, "orthophoto")
     s.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
     with s.output_jsonl.open("w", encoding="utf-8") as f:

@@ -10,6 +10,7 @@ class TylerMode(str, Enum):
     ORTHOPHOTO = "orthophoto"
     SATELLITE = "satellite"
     COCO = "coco"
+    DOTA = "dota"
 
 
 class OrthophotoSettings(BaseModel):
@@ -42,11 +43,22 @@ class CocoSettings(BaseModel):
     lon_max: float = Field(default=180.0)
 
 
+class DotaSettings(BaseModel):
+    images_root: Path = Field(default=Path("data/dota"))
+    max_items: int = Field(default=10000)
+    seed: int = Field(default=1337)
+    lat_min: float = Field(default=-60.0)
+    lat_max: float = Field(default=60.0)
+    lon_min: float = Field(default=-180.0)
+    lon_max: float = Field(default=180.0)
+
+
 class TylerSettings(BaseSettings):
     mode: TylerMode = Field(default=TylerMode.ORTHOPHOTO)
     orthophoto: OrthophotoSettings = Field(default_factory=OrthophotoSettings)
     satellite: SatelliteSettings = Field(default_factory=SatelliteSettings)
     coco: CocoSettings = Field(default_factory=CocoSettings)
+    dota: DotaSettings = Field(default_factory=DotaSettings)
     output_jsonl: Path = Field(default=Path("data/tiles.jsonl"))
 
     model_config = SettingsConfigDict(
