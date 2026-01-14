@@ -48,9 +48,17 @@ class VectorDBClient(VectorIndexClient, VectorQueryClient):
         table_name: str,
         where: Optional[str] = None,
         limit: int = 10,
+        offset: int = 0,
+        from_end: bool = False,
         columns: Optional[Sequence[str]] = None,
     ) -> List[dict]:
-        payload = SampleRowsRequest(where=where, limit=limit, columns=columns).model_dump()
+        payload = SampleRowsRequest(
+            where=where,
+            limit=limit,
+            offset=offset,
+            from_end=from_end,
+            columns=columns,
+        ).model_dump()
         resp = self._client.post(f"{self._base_url}/tables/{table_name}/rows", json=payload)
         resp.raise_for_status()
         return list(resp.json().get("results", []))
@@ -88,6 +96,11 @@ class VectorDBClient(VectorIndexClient, VectorQueryClient):
             columns=columns,
         ).model_dump()
         resp = self._client.post(f"{self._base_url}/tables/{table_name}/export", json=payload)
+        resp.raise_for_status()
+        return dict(resp.json())
+
+    def optimize_table(self, table_name: str) -> dict:
+        resp = self._client.post(f"{self._base_url}/tables/{table_name}/optimize", json={})
         resp.raise_for_status()
         return dict(resp.json())
 

@@ -21,7 +21,12 @@ from retriever.adapters.tile_store import (
 from retriever.clients.vectordb import VectorDBClient
 from retriever.components.embedder_worker.settings import EmbedderSettings
 from retriever.core.interfaces import MessageBus, TileStore, TilesRepository
-from retriever.core.schemas import IndexRequest, geo_to_columns, pixel_polygon_to_columns
+from retriever.core.schemas import (
+    IndexRequest,
+    geo_polygon_to_columns,
+    geo_to_columns,
+    pixel_polygon_to_columns,
+)
 
 
 def _tile_id_for_req(req: IndexRequest) -> str:
@@ -37,6 +42,19 @@ def _safe_update_status(repo: Optional[TilesRepository], tile_ids: Sequence[str]
     except Exception as exc:
         # status updates should never crash the worker
         print(f"[warn] tiles db status update failed ({status}) for {len(tile_ids)} tiles: {exc}")
+        return False
+
+
+def _safe_update_indexed_at(
+    repo: Optional[TilesRepository], tile_ids: Sequence[str], indexed_at: int
+) -> bool:
+    if not repo or not tile_ids:
+        return True
+    try:
+        repo.update_indexed_at(tile_ids, indexed_at=indexed_at)
+        return True
+    except Exception as exc:
+        print(f"[warn] tiles db indexed_at update failed for {len(tile_ids)} tiles: {exc}")
         return False
 
 
@@ -330,6 +348,8 @@ def run() -> None:
                 "height": int(req.height),
                 "tile_id": req.tile_id,
                 "source": req.source,
+                "status": "indexed",
+                "indexed_at": int(time.time()),
                 "gid": req.gid,
                 "raster_path": req.raster_path,
                 "run_id": req.run_id,
@@ -337,6 +357,7 @@ def run() -> None:
                 "embedder_backend": item["embedder_backend"],
                 "embedder_model": item["embedder_model"],
                 **pixel_polygon_to_columns(req),
+                **geo_polygon_to_columns(req),
                 **geo_to_columns(req),
             }
             table_name = item["table_name"]
@@ -363,8 +384,10 @@ def run() -> None:
                 return
 
         # Upsert succeeded: mark indexed and ack
+        indexed_at = int(time.time())
         for table_name, tile_ids in tile_ids_by_table.items():
             status_ok = _safe_update_status(tiles_repo, tile_ids, status="indexed")
+            _safe_update_indexed_at(tiles_repo, tile_ids, indexed_at=indexed_at)
             if status_ok or not s.require_index_status_before_ack:
                 for envelope in envelopes_by_table.get(table_name, []):
                     _safe_ack(envelope)

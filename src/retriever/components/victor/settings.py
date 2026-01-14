@@ -15,6 +15,13 @@ class VictorSettings(BaseSettings):
     embedder_queues: str = Field(default="pe_core=tiles.to_index.pe_core")
 
     tiles_db_path: Path = Field(default=Path("data/tiles.db"))
+    vectordb_url: str = Field(default="http://localhost:8001")
+    ready_status: str = Field(default="ready")
+    ready_batch_limit: int = Field(default=500)
+    poll_interval_s: float = Field(default=60.0)
+    ttl_s: int = Field(default=0)
+    ttl_batch_limit: int = Field(default=5000)
+    vectordb_tables: str = Field(default="")
 
     model_config = SettingsConfigDict(
         env_prefix="VICTOR_",

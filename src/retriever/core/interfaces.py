@@ -31,7 +31,13 @@ class TilesRepository(Protocol):
     def update_status(self, tile_ids: Sequence[str], status: str) -> None:
         ...
 
+    def update_indexed_at(self, tile_ids: Sequence[str], indexed_at: int) -> None:
+        ...
+
     def delete_tiles(self, tile_ids: Sequence[str]) -> None:
+        ...
+
+    def list_expired_tiles(self, cutoff_ts: int, limit: int = 1000) -> List[dict]:
         ...
 
 

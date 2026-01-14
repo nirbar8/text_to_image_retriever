@@ -12,7 +12,12 @@ from retriever.adapters.message_bus_rmq_config import RmqConfig
 from retriever.adapters.tiles_repo_sqlite import SqliteTilesConfig, SqliteTilesRepository
 from retriever.components.victor.settings import VictorSettings
 from retriever.core.interfaces import MessageBus, TilesRepository
-from retriever.core.schemas import IndexRequest, geo_to_columns, pixel_polygon_to_columns
+from retriever.core.schemas import (
+    IndexRequest,
+    geo_polygon_to_columns,
+    geo_to_columns,
+    pixel_polygon_to_columns,
+)
 
 
 @dataclass
@@ -39,15 +44,18 @@ class VectorManager:
             tiles.append(
                 {
                     "tile_id": req.tile_id or f"tile:{req.image_id}",
+                    "image_id": req.image_id,
                     "image_path": req.image_path,
                     "width": req.width,
                     "height": req.height,
                     "status": "waiting for embedding",
+                    "indexed_at": None,
                     "gid": req.gid,
                     "raster_path": req.raster_path,
                     "tile_store": req.tile_store,
                     "source": req.source,
                     **pixel_polygon_to_columns(req),
+                    **geo_polygon_to_columns(req),
                     **geo_to_columns(req),
                 }
             )
