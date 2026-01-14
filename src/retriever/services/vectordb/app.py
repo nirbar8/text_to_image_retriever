@@ -12,6 +12,7 @@ from retriever.core.schemas import (
     ExportRowsRequest,
     ExportRowsResponse,
     HealthResponse,
+    OptimizeResponse,
     SampleRowsRequest,
     TableInfoResponse,
     VectorQueryRequest,
@@ -73,6 +74,8 @@ def create_app(settings: VectorDBSettings) -> FastAPI:
             table_name=table_name,
             limit=req.limit,
             where=req.where,
+            offset=req.offset,
+            from_end=req.from_end,
             columns=req.columns,
         )
         return {"results": results}
@@ -109,6 +112,13 @@ def create_app(settings: VectorDBSettings) -> FastAPI:
             columns=req.columns,
         )
         return ExportRowsResponse(written=written, out_path=req.out_path)
+
+    @app.post("/tables/{table_name}/optimize", response_model=OptimizeResponse)
+    def optimize_table(table_name: str) -> OptimizeResponse:
+        if not _table_exists(table_name):
+            raise HTTPException(status_code=404, detail=f"Table not found: {table_name}")
+        res = adapter.optimize_table(table_name)
+        return OptimizeResponse(**res)
 
     return app
 

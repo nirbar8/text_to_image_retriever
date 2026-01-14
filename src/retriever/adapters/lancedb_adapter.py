@@ -120,8 +120,10 @@ class LanceDBAdapter:
         sentinel["image_id"] = -1
         sentinel["width"] = 0
         sentinel["height"] = 0
+        sentinel["indexed_at"] = 0
         sentinel["gid"] = -1
         sentinel["pixel_polygon"] = ""
+        sentinel["geo_polygon"] = ""
         sentinel["lat"] = 0.0
         sentinel["lon"] = 0.0
 
@@ -172,9 +174,17 @@ class LanceDBAdapter:
         table_name: str,
         limit: int = 10,
         where: Optional[str] = None,
+        offset: int = 0,
+        from_end: bool = False,
         columns: Optional[Sequence[str]] = None,
     ) -> List[Dict[str, Any]]:
         table = self.open_table(table_name)
+        if from_end:
+            try:
+                row_count = int(table.count_rows())
+            except Exception:
+                row_count = 0
+            offset = max(row_count - limit, 0)
         q = table.search()
         if where:
             q = q.where(where)
@@ -182,7 +192,17 @@ class LanceDBAdapter:
             cols = self._filter_existing_columns(table_name, columns)
             if cols:
                 q = q.select(cols)
-        return q.limit(limit).to_list()
+        return q.limit(limit).offset(offset).to_list()
+
+    def optimize_table(self, table_name: str) -> Dict[str, Any]:
+        table = self.open_table(table_name)
+        try:
+            res = table.optimize()
+        except Exception as exc:
+            return {"status": "error", "details": {"error": str(exc)}}
+        if isinstance(res, dict):
+            return {"status": "ok", "details": res}
+        return {"status": "ok", "details": None}
 
     def delete_where(self, table_name: str, where: str) -> Dict[str, Optional[int]]:
         table = self.open_table(table_name)

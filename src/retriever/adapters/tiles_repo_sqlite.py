@@ -112,7 +112,30 @@ class SqliteTilesRepository(TilesRepository):
         )
         self._conn.commit()
 
+    def update_indexed_at(self, tile_ids: Sequence[str], indexed_at: int) -> None:
+        cur = self._conn.cursor()
+        cur.executemany(
+            "UPDATE tiles SET indexed_at = ? WHERE tile_id = ?",
+            [(indexed_at, tile_id) for tile_id in tile_ids],
+        )
+        self._conn.commit()
+
     def delete_tiles(self, tile_ids: Sequence[str]) -> None:
         cur = self._conn.cursor()
         cur.executemany("DELETE FROM tiles WHERE tile_id = ?", [(tile_id,) for tile_id in tile_ids])
         self._conn.commit()
+
+    def list_expired_tiles(self, cutoff_ts: int, limit: int = 1000) -> List[dict]:
+        cur = self._conn.cursor()
+        columns = ", ".join(TILE_DB_COLUMNS)
+        cur.execute(
+            f"""
+            SELECT {columns}
+            FROM tiles
+            WHERE indexed_at IS NOT NULL AND indexed_at <= ?
+            LIMIT ?
+            """,
+            (cutoff_ts, limit),
+        )
+        rows = cur.fetchall()
+        return [dict(zip(TILE_DB_COLUMNS, r)) for r in rows]
