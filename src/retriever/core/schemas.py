@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
 from pydantic import BaseModel, Field
@@ -52,6 +53,25 @@ VECTOR_METADATA_COLUMNS = (
     "embedder_model",
 )
 VECTOR_SCHEMA_COLUMNS = ("id", *VECTOR_METADATA_COLUMNS)
+
+
+@dataclass(frozen=True)
+class TileSpec:
+    """Unified tile specification model used across all tyler implementations."""
+    image_id: int
+    tile_id: str
+    width: int
+    height: int
+    tyler_mode: str
+    image_path: Optional[str] = None
+    raster_path: Optional[str] = None
+    gid: Optional[int] = None
+    pixel_polygon: Optional[str] = None
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    utm_zone: Optional[str] = None
+    width_m: Optional[float] = None
+    height_m: Optional[float] = None
 
 
 class IndexRequest(BaseModel):

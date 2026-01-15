@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Optional
 
 from retriever.adapters.embedder_base import Embedder
-from retriever.adapters.pe_core import PECoreEmbedder
 
 
 def build_embedder(
@@ -18,6 +17,7 @@ def build_embedder(
     backend_key = backend.strip().lower()
 
     if backend_key in {"pe", "pe-core", "pe_core"}:
+        from retriever.adapters.pe_core import PECoreEmbedder
         return PECoreEmbedder(model_name)
 
     if backend_key in {"clip"}:

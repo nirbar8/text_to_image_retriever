@@ -1,50 +1,53 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import Iterable, List
 
 import numpy as np
 from PIL import Image
 
+from retriever.components.tyler.models.dota_config import DotaTylerConfig
+from retriever.components.tyler.settings.dota_settings import DotaSettings
+from retriever.components.tyler.settings.tyler_mode import TylerMode
+from retriever.components.tyler.tylers.abstracts import BaseTyler
+from retriever.core.schemas import TileSpec
 from retriever.core.tile_id import TileKey, canonical_tile_id
 
 
-@dataclass(frozen=True)
-class TileSpec:
-    image_id: int
-    tile_id: str
-    image_path: str
-    width: int
-    height: int
-    lat: float
-    lon: float
-    utm_zone: str
+class DotaTyler(BaseTyler):
+    tyler_mode: str = TylerMode.DOTA.value
 
-
-@dataclass(frozen=True)
-class DotaTylerConfig:
-    images_root: Path
-    max_items: int = 10000
-    seed: int = 1337
-    lat_range: Tuple[float, float] = (-60.0, 60.0)
-    lon_range: Tuple[float, float] = (-180.0, 180.0)
-    source_name: str = "dota"
-    extensions: Tuple[str, ...] = (".png", ".jpg", ".jpeg", ".tif", ".tiff")
-
-
-class DotaTyler:
     def __init__(self, cfg: DotaTylerConfig):
         self._cfg = cfg
 
-    def _random_geo(self, rng: np.random.Generator) -> Tuple[float, float, str]:
-        lat = float(rng.uniform(self._cfg.lat_range[0], self._cfg.lat_range[1]))
-        lon = float(rng.uniform(self._cfg.lon_range[0], self._cfg.lon_range[1]))
-        zone = int((lon + 180.0) // 6.0) + 1
-        zone = min(max(zone, 1), 60)
-        hemi = "N" if lat >= 0 else "S"
-        utm_zone = f"{zone:02d}{hemi}"
-        return lat, lon, utm_zone
+    @classmethod
+    def from_settings(cls, settings: DotaSettings) -> "DotaTyler":
+        """Create a DotaTyler from settings."""
+        cfg = DotaTylerConfig(
+            images_root=settings.images_root,
+            max_items=settings.max_items,
+            seed=settings.seed,
+            lat_range=(settings.lat_min, settings.lat_max),
+            lon_range=(settings.lon_min, settings.lon_max),
+        )
+        return cls(cfg)
+
+    @classmethod
+    def get_settings_from(cls, tyler_settings) -> DotaSettings:
+        """Get the settings for this tyler from TylerSettings."""
+        return tyler_settings.dota
+
+    @property
+    def tile_store(self) -> str:
+        return "local"
+
+    @property
+    def source(self) -> str:
+        return "dota"
+
+    @property
+    def tyler_mode(self) -> str:
+        return TylerMode.DOTA.value
 
     def _iter_images(self) -> Iterable[Path]:
         if not self._cfg.images_root.exists():
@@ -65,7 +68,7 @@ class DotaTyler:
             with Image.open(img_path) as img:
                 width, height = img.size
 
-            lat, lon, utm_zone = self._random_geo(rng)
+            lat, lon, utm_zone = self._random_geo(rng, self._cfg.lat_range, self._cfg.lon_range)
             image_id = idx
             key = TileKey(source=self._cfg.source_name, z=0, x=image_id, y=0)
             tile_id = canonical_tile_id(key)
@@ -80,6 +83,7 @@ class DotaTyler:
                     lat=lat,
                     lon=lon,
                     utm_zone=utm_zone,
+                    tyler_mode=self.tyler_mode,
                 )
             )
         return tiles

@@ -2,58 +2,76 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
-from retriever.components.tyler.factory import TylerFactory
-from retriever.components.tyler.settings import TylerMode, TylerSettings
+from retriever.components.tyler.factories.tyler_factory import TylerFactory
+from retriever.components.tyler.settings.tyler_mode import TylerMode
+from retriever.components.tyler.settings.tyler_settings import TylerSettings
+from retriever.components.tyler.tylers.coco import CocoTyler
+from retriever.components.tyler.tylers.dota import DotaTyler
+from retriever.components.tyler.tylers.orthophoto import OrthophotoTyler
+from retriever.components.tyler.tylers.satellite import SatelliteBoundsTyler
+from retriever.components.tyler.tylers.strip import StripTyler
+from retriever.core.interfaces import Tyler
+from retriever.core.schemas import TileSpec
 
 
-def run() -> None:
-    parser = argparse.ArgumentParser(description="Generate tiles from orthophoto or satellite bounds.")
-    parser.add_argument("--mode", choices=["orthophoto", "satellite", "coco", "dota"], default=None)
-    args = parser.parse_args()
+def _tile_to_record(tile: TileSpec, tyler: Tyler) -> dict:
+    """Convert a TileSpec to a JSON record dictionary."""
+    return {
+        "image_id": tile.image_id,
+        "image_path": tile.image_path or "",
+        "width": tile.width,
+        "height": tile.height,
+        "tile_id": tile.tile_id,
+        "gid": tile.gid,
+        "raster_path": tile.raster_path,
+        "pixel_polygon": tile.pixel_polygon,
+        "out_width": tile.width,
+        "out_height": tile.height,
+        "lat": tile.lat,
+        "lon": tile.lon,
+        "utm_zone": tile.utm_zone,
+        "tile_store": tyler.tile_store,
+        "source": tyler.source,
+        "tyler_mode": tile.tyler_mode,
+    }
 
-    s = TylerSettings()
-    if args.mode:
-        s.mode = TylerMode(args.mode)
-    tyler = TylerFactory(s).build()
 
-    tiles = tyler.generate_tiles()
-    tile_store = {
-        TylerMode.ORTHOPHOTO: "orthophoto",
-        TylerMode.SATELLITE: "synthetic",
-        TylerMode.COCO: "local",
-        TylerMode.DOTA: "local",
-    }.get(s.mode, "orthophoto")
-    source = {
-        TylerMode.ORTHOPHOTO: "orthophoto",
-        TylerMode.SATELLITE: "satellite",
-        TylerMode.COCO: "coco",
-        TylerMode.DOTA: "dota",
-    }.get(s.mode, "orthophoto")
-    s.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
-    with s.output_jsonl.open("w", encoding="utf-8") as f:
-        for t in tiles:
-            record = {
-                "image_id": t.image_id,
-                "image_path": getattr(t, "image_path", ""),
-                "width": t.width,
-                "height": t.height,
-                "tile_id": t.tile_id,
-                "gid": getattr(t, "gid", None),
-                "raster_path": getattr(t, "raster_path", None),
-                "pixel_polygon": getattr(t, "pixel_polygon", None),
-                "out_width": t.width,
-                "out_height": t.height,
-                "lat": getattr(t, "lat", None),
-                "lon": getattr(t, "lon", None),
-                "utm_zone": getattr(t, "utm_zone", None),
-                "tile_store": tile_store,
-                "source": source,
-            }
+def _write_tiles_jsonl(tiles: list[TileSpec], tyler: Tyler, output_path: Path) -> None:
+    """Write tiles to a JSONL file."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as f:
+        for tile in tiles:
+            record = _tile_to_record(tile, tyler)
             f.write(json.dumps(record, ensure_ascii=False))
             f.write("\n")
 
-    print(f"Wrote {len(tiles)} tiles to {s.output_jsonl}")
+
+def run() -> None:
+    """Main CLI entry point."""
+    parser = argparse.ArgumentParser(description="Generate tiles from orthophoto or satellite bounds.")
+    parser.add_argument("--mode", choices=["orthophoto", "satellite", "coco", "dota", "strip"], default=None)
+    args = parser.parse_args()
+
+    settings = TylerSettings()
+    if args.mode:
+        settings.mode = TylerMode(args.mode)
+    
+    available_tylers = [
+        OrthophotoTyler,
+        SatelliteBoundsTyler,
+        CocoTyler,
+        DotaTyler,
+        StripTyler,
+    ]
+    
+    tyler = TylerFactory(settings, available_tylers).build()
+    tiles = tyler.generate_tiles()
+    
+    _write_tiles_jsonl(tiles, tyler, settings.output_jsonl)
+    
+    print(f"Wrote {len(tiles)} tiles to {settings.output_jsonl}")
 
 
 if __name__ == "__main__":

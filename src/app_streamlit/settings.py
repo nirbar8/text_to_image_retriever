@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class AppSettings(BaseSettings):
     retriever_url: str = Field(default="http://localhost:8002")
     vectordb_url: str = Field(default="http://localhost:8001")
-    table_name: str = Field(default="tiles_pe_core_b16_224")
+    table_name: str = Field(default="tiles_orthophoto_vit_b_32")
     timeout_s: float = Field(default=60.0)
 
     model_config = SettingsConfigDict(

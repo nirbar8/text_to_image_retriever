@@ -1,42 +1,56 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List
 
 import geopandas as gpd
 import numpy as np
 from shapely.affinity import rotate
 from shapely.geometry import Polygon, box
 
+from retriever.components.tyler.models.satellite_config import SatelliteTylerConfig
+from retriever.components.tyler.settings.satellite_settings import SatelliteSettings
+from retriever.components.tyler.settings.tyler_mode import TylerMode
+from retriever.components.tyler.tylers.abstracts import BaseTyler
+from retriever.core.schemas import TileSpec
 from retriever.core.tile_id import TileKey, canonical_tile_id
 
 
-@dataclass(frozen=True)
-class TileSpec:
-    image_id: int
-    tile_id: str
-    gid: int
-    pixel_polygon: str
-    width: int
-    height: int
+class SatelliteBoundsTyler(BaseTyler):
+    tyler_mode: str = TylerMode.SATELLITE.value
 
-
-@dataclass(frozen=True)
-class SatelliteTylerConfig:
-    bounds: Tuple[float, float, float, float]
-    tile_size_deg: float = 0.01
-    tile_size_px: int = 512
-    image_count: int = 10
-    image_size_deg: float = 0.05
-    rotation_deg_max: float = 45.0
-    seed: int = 1337
-    output_crs: str = "EPSG:4326"
-    source_name: str = "satellite"
-
-
-class SatelliteBoundsTyler:
     def __init__(self, cfg: SatelliteTylerConfig):
         self._cfg = cfg
+
+    @classmethod
+    def from_settings(cls, settings: SatelliteSettings) -> "SatelliteBoundsTyler":
+        """Create a SatelliteBoundsTyler from settings."""
+        cfg = SatelliteTylerConfig(
+            bounds=(settings.bounds_minx, settings.bounds_miny, settings.bounds_maxx, settings.bounds_maxy),
+            tile_size_deg=settings.tile_size_deg,
+            tile_size_px=settings.tile_size_px,
+            image_count=settings.image_count,
+            image_size_deg=settings.image_size_deg,
+            rotation_deg_max=settings.rotation_deg_max,
+            seed=settings.seed,
+        )
+        return cls(cfg)
+
+    @classmethod
+    def get_settings_from(cls, tyler_settings) -> SatelliteSettings:
+        """Get the settings for this tyler from TylerSettings."""
+        return tyler_settings.satellite
+
+    @property
+    def tile_store(self) -> str:
+        return "synthetic"
+
+    @property
+    def source(self) -> str:
+        return "satellite"
+
+    @property
+    def tyler_mode(self) -> str:
+        return TylerMode.SATELLITE.value
 
     def _random_image_polygons(self) -> List[Polygon]:
         minx, miny, maxx, maxy = self._cfg.bounds
@@ -89,6 +103,7 @@ class SatelliteBoundsTyler:
                                 pixel_polygon=pixel_poly.wkt,
                                 width=int(self._cfg.tile_size_px),
                                 height=int(self._cfg.tile_size_px),
+                                tyler_mode=self.tyler_mode,
                             )
                         )
                         image_id += 1

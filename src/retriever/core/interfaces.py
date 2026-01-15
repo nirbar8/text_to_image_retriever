@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Protocol, Sequence
 
+if TYPE_CHECKING:
+    from retriever.core.schemas import TileSpec
+
 
 @dataclass(frozen=True)
 class MessageEnvelope:
@@ -75,4 +78,27 @@ class VectorQueryClient(Protocol):
         ...
 
     def delete_where(self, table_name: str, where: str) -> dict:
+        ...
+
+
+class Tyler(Protocol):
+    """Protocol for tile generation implementations."""
+    
+    def generate_tiles(self) -> "List[TileSpec]":
+        """Generate tiles and return a list of TileSpec objects."""
+        ...
+    
+    @property
+    def tile_store(self) -> str:
+        """Return the tile store identifier for this tyler."""
+        ...
+    
+    @property
+    def source(self) -> str:
+        """Return the source identifier for this tyler."""
+        ...
+    
+    @property
+    def tyler_mode(self) -> str:
+        """Return the tyler mode identifier for this tyler."""
         ...

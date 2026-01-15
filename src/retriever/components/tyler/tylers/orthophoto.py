@@ -1,38 +1,51 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 from typing import List
 
 import rasterio
 from rasterio.windows import Window
 from shapely.geometry import Polygon
 
+from retriever.components.tyler.models.orthophoto_config import OrthophotoTylerConfig
+from retriever.components.tyler.settings.orthophoto_settings import OrthophotoSettings
+from retriever.components.tyler.settings.tyler_mode import TylerMode
+from retriever.components.tyler.tylers.abstracts import BaseTyler
+from retriever.core.schemas import TileSpec
 from retriever.core.tile_id import TileKey, canonical_tile_id
 
 
-@dataclass(frozen=True)
-class TileSpec:
-    image_id: int
-    tile_id: str
-    raster_path: str
-    pixel_polygon: str
-    width: int
-    height: int
+class OrthophotoTyler(BaseTyler):
+    tyler_mode: str = TylerMode.ORTHOPHOTO.value
 
-
-@dataclass(frozen=True)
-class OrthophotoTylerConfig:
-    raster_path: Path
-    tile_size_px: int = 512
-    stride_px: int = 512
-    output_crs: str = "EPSG:4326"
-    source_name: str = "orthophoto"
-
-
-class OrthophotoTyler:
     def __init__(self, cfg: OrthophotoTylerConfig):
         self._cfg = cfg
+
+    @classmethod
+    def from_settings(cls, settings: OrthophotoSettings) -> "OrthophotoTyler":
+        """Create an OrthophotoTyler from settings."""
+        cfg = OrthophotoTylerConfig(
+            raster_path=settings.raster_path,
+            tile_size_px=settings.tile_size_px,
+            stride_px=settings.stride_px,
+        )
+        return cls(cfg)
+
+    @classmethod
+    def get_settings_from(cls, tyler_settings) -> OrthophotoSettings:
+        """Get the settings for this tyler from TylerSettings."""
+        return tyler_settings.orthophoto
+
+    @property
+    def tile_store(self) -> str:
+        return "orthophoto"
+
+    @property
+    def source(self) -> str:
+        return "orthophoto"
+
+    @property
+    def tyler_mode(self) -> str:
+        return TylerMode.ORTHOPHOTO.value
 
     def generate_tiles(self) -> List[TileSpec]:
         tiles: List[TileSpec] = []
@@ -71,6 +84,7 @@ class OrthophotoTyler:
                             pixel_polygon=pixel_poly.wkt,
                             width=int(window.width),
                             height=int(window.height),
+                            tyler_mode=self.tyler_mode,
                         )
                     )
                     image_id += 1
