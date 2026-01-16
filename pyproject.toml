@@ -23,9 +23,10 @@ victor = "retriever.components.victor.cli:main"
 embedder-worker = "retriever.components.embedder_worker.cli:main"
 vectordb-service = "retriever.services.vectordb.cli:main"
 retriever-service = "retriever.services.retriever.cli:main"
+tilesdb-service = "retriever.components.tiles_db.cli:main"
+tilesdb-admin = "retriever.components.tiles_db.admin_cli:main"
 app = "app_streamlit.cli:main"
 download-orthophoto = "retriever.scripts.download_orthophoto:main"
-tiles-db = "retriever.components.tiles_db.cli:main"
 
 [dependency-groups]
 model = [
