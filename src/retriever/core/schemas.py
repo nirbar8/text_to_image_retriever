@@ -5,51 +5,25 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from pydantic import BaseModel, Field
 
-
-TILE_PIXEL_COLUMNS = ("pixel_polygon",)
-TILE_GEO_COLUMNS = ("lat", "lon", "utm_zone")
-TILE_DB_COLUMNS = (
-    "tile_id",
-    "source",
-    "image_path",
-    "width",
-    "height",
-    "status",
-    "gid",
-    "raster_path",
-    *TILE_PIXEL_COLUMNS,
-    *TILE_GEO_COLUMNS,
-    "tile_store",
+# Import tile DB schema from the service (single source of truth)
+from retriever.components.tiles_db.sqlite_adapter import (
+    TILE_DB_COLUMN_TYPES,
+    TILE_DB_COLUMNS,
 )
-TILE_DB_COLUMN_TYPES = {
-    "tile_id": "TEXT PRIMARY KEY",
-    "source": "TEXT",
-    "image_path": "TEXT",
-    "width": "INTEGER",
-    "height": "INTEGER",
-    "status": "TEXT",
-    "gid": "INTEGER",
-    "raster_path": "TEXT",
-    "pixel_polygon": "TEXT",
-    "lat": "REAL",
-    "lon": "REAL",
-    "utm_zone": "TEXT",
-    "tile_store": "TEXT",
-}
+
+# Vector metadata columns - used for vector index metadata
+TILE_GEO_COLUMNS = ("lon", "lat")
 VECTOR_METADATA_COLUMNS = (
     "image_path",
-    "image_id",
-    "width",
-    "height",
-    "run_id",
     "tile_id",
-    "source",
     "gid",
-    "raster_path",
-    *TILE_PIXEL_COLUMNS,
-    *TILE_GEO_COLUMNS,
-    "tile_store",
-    "embedder_backend",
+    "sensor",
+    "lon",
+    "lat",
+    "resolution",
+    "tiles_size_meters",
+    "request_time",
+    "imaging_time",
     "embedder_model",
 )
 VECTOR_SCHEMA_COLUMNS = ("id", *VECTOR_METADATA_COLUMNS)

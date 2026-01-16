@@ -21,7 +21,7 @@ class TileCreateRequest(BaseModel):
     """Request model for creating/registering a tile."""
 
     tile_id: str = Field(..., description="Unique tile identifier")
-    gid: Optional[int] = Field(default=None, description="Geographic ID")
+    gid: Optional[str] = Field(default=None, description="Geographic ID")
     sensor: Optional[str] = Field(default=None, description="Sensor type (e.g., 'Sentinel-2')")
     lon: Optional[float] = Field(default=None, description="Longitude coordinate")
     lat: Optional[float] = Field(default=None, description="Latitude coordinate")
@@ -36,7 +36,7 @@ class TileCreateRequest(BaseModel):
 class TileUpdateRequest(BaseModel):
     """Request model for updating tile metadata."""
 
-    gid: Optional[int] = None
+    gid: Optional[str] = None
     sensor: Optional[str] = None
     lon: Optional[float] = None
     lat: Optional[float] = None
@@ -65,7 +65,7 @@ class TileResponse(BaseModel):
     """Response model for a single tile."""
 
     tile_id: str
-    gid: Optional[int] = None
+    gid: Optional[str] = None
     sensor: Optional[str] = None
     lon: Optional[float] = None
     lat: Optional[float] = None
